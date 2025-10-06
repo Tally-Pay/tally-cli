@@ -384,7 +384,10 @@ async fn test_simulate_events_stdout() {
 #[tokio::test]
 async fn test_simulate_events_file_output() {
     let merchant = Keypair::new().pubkey();
-    let temp_file = "/tmp/test_events.jsonl";
+
+    // Use tempfile crate for unique temp file to prevent race conditions
+    let temp_file = tempfile::NamedTempFile::new().unwrap();
+    let temp_path = temp_file.path().to_str().unwrap().to_string();
 
     let command = SimulateEventsCommand {
         merchant,
@@ -396,7 +399,7 @@ async fn test_simulate_events_file_output() {
         batch_size: 3,
         output_format: OutputFormat::File,
         websocket_url: None,
-        output_file: Some(temp_file.to_string()),
+        output_file: Some(temp_path.clone()),
         seed: Some(12345),
     };
 
@@ -408,11 +411,10 @@ async fn test_simulate_events_file_output() {
     assert!(stats.total_events > 0);
 
     // Check that file was created and contains events
-    let file_contents = tokio::fs::read_to_string(temp_file).await.unwrap();
+    let file_contents = tokio::fs::read_to_string(&temp_path).await.unwrap();
     assert!(!file_contents.is_empty());
 
-    // Clean up
-    let _ = tokio::fs::remove_file(temp_file).await;
+    // tempfile automatically cleans up on drop
 }
 
 #[tokio::test]

@@ -1612,6 +1612,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "errno"
+version = "0.3.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.1",
+]
+
+[[package]]
 name = "event-listener"
 version = "2.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1649,6 +1659,12 @@ dependencies = [
  "rand 0.9.2",
  "siphasher 1.0.1",
 ]
+
+[[package]]
+name = "fastrand"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "feature-probe"
@@ -1704,9 +1720,9 @@ checksum = "2551bf44bc5f776c15044b9b94153a00198be06743e262afaaa61f11ac7523a5"
 
 [[package]]
 name = "flate2"
-version = "1.1.2"
+version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a3d7db9596fecd151c5f638c0ee5d5bd487b6e0ea232e5dc96d5250f6f94b1d"
+checksum = "dc5a4e564e38c699f2880d3fda590bedc2e69f3f84cd48b457bd892ce61d0aa9"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -2579,6 +2595,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linux-raw-sys"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df1d3c3b53da64cf5760482273a98e575c651a67eec7f77df96b5b642de8f039"
+
+[[package]]
 name = "litemap"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2672,6 +2694,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
 dependencies = [
  "adler2",
+ "simd-adler32",
 ]
 
 [[package]]
@@ -3507,6 +3530,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd15f8a2c5551a84d56efdc1cd049089e409ac19a3072d5037a17fd70719ff3e"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys",
+ "windows-sys 0.61.1",
+]
+
+[[package]]
 name = "rustls"
 version = "0.21.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3881,6 +3917,12 @@ dependencies = [
  "digest 0.10.7",
  "rand_core 0.6.4",
 ]
+
+[[package]]
+name = "simd-adler32"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "siphasher"
@@ -8630,6 +8672,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tally-sdk",
+ "tempfile",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tracing",
@@ -8639,7 +8682,9 @@ dependencies = [
 
 [[package]]
 name = "tally-sdk"
-version = "0.2.0"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e429beb868177ff5f6c169273b601d43b6b7a53a5e379ae4180709931511263"
 dependencies = [
  "anchor-client",
  "anchor-lang",
@@ -8666,6 +8711,19 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "tempfile"
+version = "3.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d31c77bdf42a745371d260a26ca7163f1e0924b64afa0b688e61b5a9fa02f16"
+dependencies = [
+ "fastrand",
+ "getrandom 0.3.3",
+ "once_cell",
+ "rustix",
+ "windows-sys 0.61.1",
 ]
 
 [[package]]
@@ -9095,9 +9153,9 @@ checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "unicode-width"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
+checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
 
 [[package]]
 name = "unicode-xid"
