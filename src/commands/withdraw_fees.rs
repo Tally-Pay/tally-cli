@@ -8,8 +8,8 @@ use tally_sdk::{
     get_usdc_mint, load_keypair,
     validate_usdc_token_account, SimpleTallyClient,
 };
-use anchor_lang::prelude::Pubkey;
-use anchor_client::solana_sdk::signature::Signer;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::solana_sdk::signature::Signer;
 use tracing::info;
 
 /// Execute the withdraw fees command

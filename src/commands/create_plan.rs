@@ -8,8 +8,8 @@ use tally_sdk::{
     program_types::CreatePlanArgs,
     SimpleTallyClient,
 };
-use anchor_lang::prelude::Pubkey;
-use anchor_client::solana_sdk::signature::Signer;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::solana_sdk::signature::Signer;
 use tracing::info;
 
 /// Arguments for creating a plan

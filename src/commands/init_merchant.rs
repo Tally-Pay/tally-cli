@@ -7,8 +7,8 @@ use tally_sdk::{
     get_usdc_mint, load_keypair,
     SimpleTallyClient,
 };
-use anchor_lang::prelude::Pubkey;
-use anchor_client::solana_sdk::signature::Signer;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::solana_sdk::signature::Signer;
 use tracing::info;
 
 /// Execute the init merchant command

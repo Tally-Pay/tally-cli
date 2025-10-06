@@ -19,10 +19,10 @@ use std::{
 };
 use tally_sdk::{
     events::{Canceled, PaymentFailed, Renewed, Subscribed, TallyEvent},
-    SimpleTallyClient,
+    AnchorSerialize, SimpleTallyClient,
 };
-use anchor_lang::prelude::Pubkey;
-use anchor_client::solana_sdk::signature::Signature;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::solana_sdk::signature::Signature;
 use tokio::{sync::mpsc, time::interval};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use tracing::{debug, error, info};
@@ -819,8 +819,7 @@ impl EventSimulator {
 
     /// Serialize an event with the proper Anchor discriminator
     fn serialize_event_with_discriminator(event: &TallyEvent) -> Result<Vec<u8>> {
-        use anchor_lang::prelude::*;
-        use anchor_lang::solana_program::hash;
+        use tally_sdk::solana_sdk::hash;
 
         let (event_name, event_data) = match event {
             TallyEvent::Subscribed(e) => ("Subscribed", e.try_to_vec()?),

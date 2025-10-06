@@ -8622,8 +8622,6 @@ dependencies = [
 name = "tally-cli"
 version = "0.1.0"
 dependencies = [
- "anchor-client",
- "anchor-lang",
  "anyhow",
  "base64 0.22.1",
  "borsh 1.5.7",
@@ -8631,7 +8629,6 @@ dependencies = [
  "futures-util",
  "serde",
  "serde_json",
- "solana-sdk 3.0.0",
  "tally-sdk",
  "tokio",
  "tokio-tungstenite 0.24.0",
@@ -8642,8 +8639,7 @@ dependencies = [
 
 [[package]]
 name = "tally-sdk"
-version = "0.1.0"
-source = "git+https://github.com/Tally-Pay/tally-protocol?branch=main#109536fdfe1ad05544426d8131eed9235311cab6"
+version = "0.2.0"
 dependencies = [
  "anchor-client",
  "anchor-lang",

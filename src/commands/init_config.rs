@@ -9,8 +9,8 @@ use tally_sdk::{
     transaction_builder::init_config,
     SimpleTallyClient,
 };
-use anchor_lang::prelude::Pubkey;
-use anchor_client::solana_sdk::signature::Signer;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::solana_sdk::signature::Signer;
 use tracing::info;
 
 /// Execute the init config command
