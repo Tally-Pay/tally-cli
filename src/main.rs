@@ -136,6 +136,29 @@ enum Commands {
         authority: Option<String>,
     },
 
+    /// Update subscription plan terms (price, period, grace period)
+    UpdatePlanTerms {
+        /// Plan account address
+        #[arg(long)]
+        plan: String,
+
+        /// New price in USDC micro-units (optional)
+        #[arg(long)]
+        price: Option<u64>,
+
+        /// New billing period in seconds (optional)
+        #[arg(long)]
+        period: Option<i64>,
+
+        /// New grace period in seconds (optional)
+        #[arg(long)]
+        grace_period: Option<i64>,
+
+        /// Authority keypair for the merchant
+        #[arg(long)]
+        authority: Option<String>,
+    },
+
     /// List subscription plans for a merchant
     ListPlans {
         /// Merchant account address
@@ -401,6 +424,28 @@ async fn execute_command(
                 authority_path: authority.as_deref(),
             };
             commands::execute_create_plan(tally_client, &request, config).await
+        }
+
+        Commands::UpdatePlanTerms {
+            plan,
+            price,
+            period,
+            grace_period,
+            authority,
+        } => {
+            let request = commands::update_plan_terms::UpdatePlanTermsRequest {
+                plan,
+                new_price: *price,
+                new_period_seconds: *period,
+                new_grace_period_seconds: *grace_period,
+            };
+            commands::execute_update_plan_terms(
+                tally_client,
+                &request,
+                authority.as_deref(),
+                config,
+            )
+            .await
         }
 
         Commands::ListPlans { merchant } => {
