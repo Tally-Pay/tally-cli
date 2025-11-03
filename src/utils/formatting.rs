@@ -182,11 +182,8 @@ pub fn format_subscriptions_json(
 
 /// Format unix timestamp to human-readable date
 ///
-/// # Panics
-///
-/// Panics if the datetime cannot calculate duration since `UNIX_EPOCH`,
-/// which should not happen in normal circumstances since we validate
-/// the timestamp and use checked arithmetic
+/// Returns "Invalid" for timestamps that cannot be converted to valid dates,
+/// or "N/A" for zero/negative timestamps.
 #[must_use]
 pub fn format_timestamp(timestamp: i64) -> String {
     if timestamp <= 0 {
@@ -198,11 +195,13 @@ pub fn format_timestamp(timestamp: i64) -> String {
 
     SystemTime::UNIX_EPOCH
         .checked_add(std::time::Duration::from_secs(timestamp_u64))
+        .and_then(|datetime| {
+            // Safely calculate duration since epoch without panicking
+            datetime.duration_since(UNIX_EPOCH).ok()
+        })
         .map_or_else(
-            || "Invalid".to_string(),
-            |datetime| {
-                // Simple formatting without external dependencies
-                let duration_since_epoch = datetime.duration_since(UNIX_EPOCH).unwrap();
+            || format!("Invalid timestamp: {timestamp}"),
+            |duration_since_epoch| {
                 let secs = duration_since_epoch.as_secs();
                 let days = secs / 86400;
                 let hours = (secs % 86400) / 3600;
