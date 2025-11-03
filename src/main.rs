@@ -61,9 +61,9 @@ enum Commands {
         #[arg(long, default_value = "1000")]
         max_platform_fee_bps: u16,
 
-        /// Basis points divisor for percentage calculations
-        #[arg(long, default_value = "10000")]
-        fee_basis_points_divisor: u16,
+        /// Minimum platform fee in basis points (e.g., 50 = 0.5%)
+        #[arg(long, default_value = "50")]
+        min_platform_fee_bps: u16,
 
         /// Minimum subscription period in seconds
         #[arg(long, default_value = "86400")]
@@ -72,6 +72,22 @@ enum Commands {
         /// Default allowance periods multiplier
         #[arg(long, default_value = "3")]
         default_allowance_periods: u8,
+
+        /// Allowed USDC mint address
+        #[arg(long)]
+        allowed_mint: String,
+
+        /// Maximum withdrawal amount per transaction (in USDC micro-units)
+        #[arg(long, default_value = "1000000000000")]
+        max_withdrawal_amount: u64,
+
+        /// Maximum grace period in seconds
+        #[arg(long, default_value = "604800")]
+        max_grace_period_seconds: u64,
+
+        /// Keeper fee in basis points (e.g., 50 = 0.5%)
+        #[arg(long, default_value = "50")]
+        keeper_fee_bps: u16,
     },
 
     /// Initialize a new merchant account
@@ -325,17 +341,25 @@ async fn execute_command(
         Commands::InitConfig {
             platform_authority,
             max_platform_fee_bps,
-            fee_basis_points_divisor,
+            min_platform_fee_bps,
             min_period_seconds,
             default_allowance_periods,
+            allowed_mint,
+            max_withdrawal_amount,
+            max_grace_period_seconds,
+            keeper_fee_bps,
         } => {
             commands::execute_init_config(
                 tally_client,
                 platform_authority,
                 *max_platform_fee_bps,
-                *fee_basis_points_divisor,
+                *min_platform_fee_bps,
                 *min_period_seconds,
                 *default_allowance_periods,
+                allowed_mint,
+                *max_withdrawal_amount,
+                *max_grace_period_seconds,
+                *keeper_fee_bps,
                 None, // authority_path - using default wallet
                 config,
             )

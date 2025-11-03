@@ -8683,8 +8683,6 @@ dependencies = [
 [[package]]
 name = "tally-sdk"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e429beb868177ff5f6c169273b601d43b6b7a53a5e379ae4180709931511263"
 dependencies = [
  "anchor-client",
  "anchor-lang",
@@ -8697,6 +8695,7 @@ dependencies = [
  "dirs",
  "hex",
  "lru",
+ "once_cell",
  "serde",
  "serde_json",
  "solana-account-decoder 3.0.5",
