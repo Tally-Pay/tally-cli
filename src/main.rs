@@ -316,6 +316,13 @@ enum Commands {
         #[arg(long)]
         event_distribution: Option<String>,
     },
+
+    /// Show merchant account details
+    ShowMerchant {
+        /// Merchant account address
+        #[arg(long)]
+        merchant: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -708,6 +715,18 @@ async fn execute_command(
             };
 
             commands::execute_simulate_events(tally_client, command, config).await
+        }
+
+        Commands::ShowMerchant { merchant } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_merchant::ShowMerchantRequest {
+                merchant,
+                output_format,
+            };
+            commands::execute_show_merchant(tally_client, &request, config).await
         }
     }
 }
