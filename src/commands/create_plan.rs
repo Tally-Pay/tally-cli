@@ -1,7 +1,7 @@
 //! Create plan command implementation
 
 use crate::config::TallyCliConfig;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use std::str::FromStr;
 use tally_sdk::{
     load_keypair,
@@ -46,7 +46,8 @@ pub async fn execute(
     info!("Expected merchant PDA: {expected_merchant_pda}");
 
     // Load authority keypair
-    let authority = load_keypair(request.authority_path)?;
+    let authority = load_keypair(request.authority_path)
+        .context("Failed to load authority keypair")?;
     info!("Using authority: {}", authority.pubkey());
 
     // Validate authority matches the provided merchant PDA

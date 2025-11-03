@@ -1,7 +1,7 @@
 //! List plans command implementation
 
 use crate::utils::formatting::{format_plans_human, format_plans_json, PlanInfo};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::ValueEnum;
 use std::str::FromStr;
 use tally_sdk::SimpleTallyClient;
@@ -32,7 +32,10 @@ pub async fn execute(
     info!("Using merchant PDA: {}", merchant_pda);
 
     // Validate merchant exists
-    if !tally_client.account_exists(&merchant_pda)? {
+    if !tally_client
+        .account_exists(&merchant_pda)
+        .context("Failed to check if merchant account exists - check RPC connection")?
+    {
         return Err(anyhow!(
             "Merchant account does not exist at address: {merchant_pda}"
         ));
@@ -41,7 +44,9 @@ pub async fn execute(
     info!("Querying plans using tally-sdk...");
 
     // Use tally-sdk to get all plans for this merchant
-    let plan_accounts = tally_client.list_plans(&merchant_pda)?;
+    let plan_accounts = tally_client
+        .list_plans(&merchant_pda)
+        .context("Failed to fetch plans - check RPC connection and merchant account state")?;
 
     info!("Found {} plan accounts", plan_accounts.len());
 

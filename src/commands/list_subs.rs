@@ -4,7 +4,7 @@ use crate::{
     config::TallyCliConfig,
     utils::formatting::{format_subscriptions_human, format_subscriptions_json, SubscriptionInfo},
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::ValueEnum;
 use std::str::FromStr;
 use tally_sdk::SimpleTallyClient;
@@ -36,7 +36,10 @@ pub async fn execute(
     info!("Using plan PDA: {}", plan_pda);
 
     // Validate plan exists
-    if !tally_client.account_exists(&plan_pda)? {
+    if !tally_client
+        .account_exists(&plan_pda)
+        .context("Failed to check if plan account exists - check RPC connection")?
+    {
         return Err(anyhow!(
             "Plan account does not exist at address: {plan_pda}"
         ));
@@ -45,7 +48,9 @@ pub async fn execute(
     info!("Querying subscriptions using tally-sdk...");
 
     // Use tally-sdk to get all subscriptions for this plan
-    let subscription_accounts = tally_client.list_subscriptions(&plan_pda)?;
+    let subscription_accounts = tally_client
+        .list_subscriptions(&plan_pda)
+        .context("Failed to fetch subscriptions - check RPC connection and plan account state")?;
 
     info!(
         "Found {} subscription accounts",
