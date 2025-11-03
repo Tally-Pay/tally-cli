@@ -52,6 +52,13 @@ enum OutputFormat {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Interactive setup wizard for first-time merchants
+    Init {
+        /// Skip the optional plan creation step
+        #[arg(long)]
+        skip_plan: bool,
+    },
+
     /// Configuration commands
     Config {
         #[command(subcommand)]
@@ -444,7 +451,8 @@ async fn main() -> Result<()> {
 fn command_needs_sdk(command: &Commands) -> bool {
     match command {
         Commands::Config { command } => matches!(command, ConfigCommands::Show),
-        Commands::Merchant { .. }
+        Commands::Init { .. }
+        | Commands::Merchant { .. }
         | Commands::Plan { .. }
         | Commands::Subscription { .. }
         | Commands::Dashboard { .. } => true,
@@ -727,6 +735,10 @@ async fn execute_command(
     config: &TallyCliConfig,
 ) -> Result<String> {
     match &cli.command {
+        Commands::Init { skip_plan } => {
+            let client = require_client(tally_client)?;
+            commands::execute_init_wizard(client, config, *skip_plan).await
+        }
         Commands::Config { command } => {
             execute_config_commands(cli, tally_client, config, command).await
         }
