@@ -553,7 +553,7 @@ pub fn format_output<T: JsonSerializable + std::fmt::Display>(
 | Implement `start-subscription` | 🟡 Medium | 4-6h | - | ✅ Complete |
 | Implement `cancel-subscription` | 🟡 Medium | 3-4h | - | ✅ Complete |
 | Implement `renew-subscription` | 🟡 Medium | 3-4h | - | ✅ Complete |
-| Implement inspection commands | 🟡 Medium | 6-9h | - | ⬜ Pending |
+| Implement inspection commands | 🟡 Medium | 6-9h | - | ✅ Complete |
 | Improve error context | 🟡 Medium | 2-3h | - | ⬜ Pending |
 
 **Deliverable**: CLI v0.3.0 with 16/20 SDK operations (80% coverage)
