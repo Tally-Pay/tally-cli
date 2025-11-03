@@ -16,7 +16,6 @@ pub mod update_plan_terms;
 
 // Re-export command execution functions for easy access
 pub use create_plan::execute as execute_create_plan;
-pub use dashboard::execute as execute_dashboard_command;
 pub use deactivate_plan::execute as execute_deactivate_plan;
 pub use init_merchant::execute as execute_init_merchant;
 pub use list_plans::execute as execute_list_plans;

@@ -1048,16 +1048,29 @@ Impact:
   - Zero clippy warnings, all tests passing
   - Comprehensive error handling with context
 
-**Priority 2: Refactor to Hierarchical Command Structure**
-- Current state: Flat command structure with disparate command names
-- Impact: High cognitive load, poor discoverability, hard to scale (CRITICAL)
-- Note: No existing users, can implement clean structure without backward compatibility
-- Action items:
-  1. Design hierarchical structure: config, merchant, plan, subscription, dashboard, fees
-  2. Implement new subcommand structure using nested Clap enums
-  3. Refactor all existing command implementations to new structure
-  4. Update all help text and documentation
-  5. Write tests for new command routing
+**Priority 2: Refactor to Hierarchical Command Structure** ✅ COMPLETED
+- ~~Current state: Flat command structure with disparate command names~~
+- **Status**: Fully refactored to hierarchical subcommand structure
+- **Completed actions**:
+  1. ✅ Designed hierarchical structure with 5 main commands: config, merchant, plan, subscription, dashboard
+  2. ✅ Implemented nested Clap enums for clean subcommand routing
+  3. ✅ Refactored all existing command implementations (no breaking changes to command logic)
+  4. ✅ Updated help text shows clear hierarchy and discoverability
+  5. ✅ All 24 tests passing, zero functional regressions
+- **New command structure**:
+  ```
+  tally-merchant config show
+  tally-merchant merchant init|show
+  tally-merchant plan create|list|update|deactivate
+  tally-merchant subscription list|show
+  tally-merchant dashboard overview|analytics|events|subscriptions
+  ```
+- **Benefits achieved**:
+  - Predictable patterns across all object types
+  - Easy discovery via `tally-merchant plan --help`
+  - Consistent verbs (create, list, show, update, deactivate)
+  - Scalable architecture for future commands
+  - Lower cognitive load (5 nouns + standard verbs)
 
 **Priority 3: Add Interactive Init Wizard**
 - Current state: No guided setup, users must figure out sequence

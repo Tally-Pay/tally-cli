@@ -16,26 +16,26 @@ use tally_sdk::SimpleTallyClient;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "tally-cli",
+    name = "tally-merchant",
     version,
     about = "Command-line interface for the Tally subscription platform",
     author = "Tally Team"
 )]
 struct Cli {
     /// RPC endpoint URL
-    #[arg(long)]
+    #[arg(long, global = true)]
     rpc_url: Option<String>,
 
     /// Output format
-    #[arg(long, value_enum)]
+    #[arg(long, value_enum, global = true)]
     output: Option<OutputFormat>,
 
     /// Program ID of the subscription program
-    #[arg(long)]
+    #[arg(long, global = true)]
     program_id: Option<String>,
 
     /// USDC mint address
-    #[arg(long)]
+    #[arg(long, global = true)]
     usdc_mint: Option<String>,
 
     #[command(subcommand)]
@@ -50,8 +50,47 @@ enum OutputFormat {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Configuration commands
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+
+    /// Merchant account management
+    Merchant {
+        #[command(subcommand)]
+        command: MerchantCommands,
+    },
+
+    /// Subscription plan management
+    Plan {
+        #[command(subcommand)]
+        command: PlanCommands,
+    },
+
+    /// Subscription management
+    Subscription {
+        #[command(subcommand)]
+        command: SubscriptionCommands,
+    },
+
+    /// Dashboard and analytics
+    Dashboard {
+        #[command(subcommand)]
+        command: DashboardCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigCommands {
+    /// Show global configuration details
+    Show,
+}
+
+#[derive(Subcommand, Debug)]
+enum MerchantCommands {
     /// Initialize a new merchant account
-    InitMerchant {
+    Init {
         /// Authority keypair for the merchant
         #[arg(long)]
         authority: Option<String>,
@@ -65,8 +104,18 @@ enum Commands {
         fee_bps: u16,
     },
 
+    /// Show merchant account details
+    Show {
+        /// Merchant account address
+        #[arg(long)]
+        merchant: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum PlanCommands {
     /// Create a new subscription plan
-    CreatePlan {
+    Create {
         /// Merchant account address
         #[arg(long)]
         merchant: String,
@@ -96,8 +145,15 @@ enum Commands {
         authority: Option<String>,
     },
 
+    /// List all plans for a merchant
+    List {
+        /// Merchant account address
+        #[arg(long)]
+        merchant: String,
+    },
+
     /// Update subscription plan terms (price, period, grace period)
-    UpdatePlanTerms {
+    Update {
         /// Plan account address
         #[arg(long)]
         plan: String,
@@ -119,22 +175,8 @@ enum Commands {
         authority: Option<String>,
     },
 
-    /// List subscription plans for a merchant
-    ListPlans {
-        /// Merchant account address
-        #[arg(long)]
-        merchant: String,
-    },
-
-    /// List subscriptions for a plan
-    ListSubs {
-        /// Plan account address
-        #[arg(long)]
-        plan: String,
-    },
-
     /// Deactivate a subscription plan
-    DeactivatePlan {
+    Deactivate {
         /// Plan account address
         #[arg(long)]
         plan: String,
@@ -143,25 +185,19 @@ enum Commands {
         #[arg(long)]
         authority: Option<String>,
     },
+}
 
-    /// Dashboard commands for analytics and monitoring
-    Dashboard {
-        #[command(subcommand)]
-        command: DashboardCommands,
-    },
-
-    /// Show merchant account details
-    ShowMerchant {
-        /// Merchant account address
+#[derive(Subcommand, Debug)]
+enum SubscriptionCommands {
+    /// List subscriptions for a plan
+    List {
+        /// Plan account address
         #[arg(long)]
-        merchant: String,
+        plan: String,
     },
-
-    /// Show global configuration details
-    ShowConfig,
 
     /// Show subscription account details
-    ShowSubscription {
+    Show {
         /// Subscription account address
         #[arg(long)]
         subscription: String,
@@ -268,143 +304,140 @@ fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
     }
 }
 
-#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity)]
 async fn execute_command(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
 ) -> Result<String> {
     match &cli.command {
-        Commands::InitMerchant {
-            authority,
-            treasury,
-            fee_bps,
-        } => {
-            commands::execute_init_merchant(
-                tally_client,
-                authority.as_deref(),
+        Commands::Config { command } => match command {
+            ConfigCommands::Show => {
+                let output_format = match cli.output {
+                    Some(OutputFormat::Json) => "json",
+                    _ => "human",
+                };
+                let request = commands::show_config::ShowConfigRequest { output_format };
+                commands::execute_show_config(tally_client, &request, config).await
+            }
+        },
+
+        Commands::Merchant { command } => match command {
+            MerchantCommands::Init {
+                authority,
                 treasury,
-                *fee_bps,
-                cli.usdc_mint.as_deref(),
-                config,
-            )
-            .await
-        }
+                fee_bps,
+            } => {
+                commands::execute_init_merchant(
+                    tally_client,
+                    authority.as_deref(),
+                    treasury,
+                    *fee_bps,
+                    cli.usdc_mint.as_deref(),
+                    config,
+                )
+                .await
+            }
 
-        Commands::CreatePlan {
-            merchant,
-            id,
-            name,
-            price,
-            period,
-            grace,
-            authority,
-        } => {
-            let request = commands::create_plan::CreatePlanRequest {
-                merchant_str: merchant,
-                plan_id: id,
-                plan_name: name,
-                price_usdc: *price,
-                period_secs: *period,
-                grace_secs: *grace,
-                authority_path: authority.as_deref(),
-            };
-            commands::execute_create_plan(tally_client, &request, config).await
-        }
+            MerchantCommands::Show { merchant } => {
+                let output_format = match cli.output {
+                    Some(OutputFormat::Json) => "json",
+                    _ => "human",
+                };
+                let request = commands::show_merchant::ShowMerchantRequest {
+                    merchant,
+                    output_format,
+                };
+                commands::execute_show_merchant(tally_client, &request, config).await
+            }
+        },
 
-        Commands::UpdatePlanTerms {
-            plan,
-            price,
-            period,
-            grace_period,
-            authority,
-        } => {
-            let request = commands::update_plan_terms::UpdatePlanTermsRequest {
+        Commands::Plan { command } => match command {
+            PlanCommands::Create {
+                merchant,
+                id,
+                name,
+                price,
+                period,
+                grace,
+                authority,
+            } => {
+                let request = commands::create_plan::CreatePlanRequest {
+                    merchant_str: merchant,
+                    plan_id: id,
+                    plan_name: name,
+                    price_usdc: *price,
+                    period_secs: *period,
+                    grace_secs: *grace,
+                    authority_path: authority.as_deref(),
+                };
+                commands::execute_create_plan(tally_client, &request, config).await
+            }
+
+            PlanCommands::List { merchant } => {
+                let output_format = match cli.output {
+                    Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
+                    _ => commands::list_plans::OutputFormat::Human,
+                };
+                commands::execute_list_plans(tally_client, merchant, &output_format).await
+            }
+
+            PlanCommands::Update {
                 plan,
-                new_price: *price,
-                new_period_seconds: *period,
-                new_grace_period_seconds: *grace_period,
-            };
-            commands::execute_update_plan_terms(
-                tally_client,
-                &request,
-                authority.as_deref(),
-                config,
-            )
-            .await
-        }
+                price,
+                period,
+                grace_period,
+                authority,
+            } => {
+                let request = commands::update_plan_terms::UpdatePlanTermsRequest {
+                    plan,
+                    new_price: *price,
+                    new_period_seconds: *period,
+                    new_grace_period_seconds: *grace_period,
+                };
+                commands::execute_update_plan_terms(
+                    tally_client,
+                    &request,
+                    authority.as_deref(),
+                    config,
+                )
+                .await
+            }
 
-        Commands::ListPlans { merchant } => {
-            // Respect global --output flag
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
-                _ => commands::list_plans::OutputFormat::Human,
-            };
-            commands::execute_list_plans(tally_client, merchant, &output_format).await
-        }
+            PlanCommands::Deactivate { plan, authority } => {
+                commands::execute_deactivate_plan(tally_client, plan, authority.as_deref()).await
+            }
+        },
 
-        Commands::ListSubs { plan } => {
-            // Respect global --output flag
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
-                _ => commands::list_subs::OutputFormat::Human,
-            };
-            commands::execute_list_subs(tally_client, plan, &output_format, config).await
-        }
+        Commands::Subscription { command } => match command {
+            SubscriptionCommands::List { plan } => {
+                let output_format = match cli.output {
+                    Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
+                    _ => commands::list_subs::OutputFormat::Human,
+                };
+                commands::execute_list_subs(tally_client, plan, &output_format, config).await
+            }
 
-        Commands::DeactivatePlan { plan, authority } => {
-            commands::execute_deactivate_plan(tally_client, plan, authority.as_deref()).await
-        }
+            SubscriptionCommands::Show { subscription } => {
+                let output_format = match cli.output {
+                    Some(OutputFormat::Json) => "json",
+                    _ => "human",
+                };
+                let request = commands::show_subscription::ShowSubscriptionRequest {
+                    subscription,
+                    output_format,
+                };
+                commands::execute_show_subscription(tally_client, &request, config).await
+            }
+        },
 
         Commands::Dashboard { command } => {
-            // Respect global --output flag
             let output_format = match cli.output {
                 Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
                 _ => commands::dashboard::OutputFormat::Human,
             };
             let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
-            commands::execute_dashboard_command(
-                tally_client,
-                command,
-                &output_format,
-                rpc_url,
-                config,
-            )
-        }
-
-        Commands::ShowMerchant { merchant } => {
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => "json",
-                _ => "human",
-            };
-            let request = commands::show_merchant::ShowMerchantRequest {
-                merchant,
-                output_format,
-            };
-            commands::execute_show_merchant(tally_client, &request, config).await
-        }
-
-        Commands::ShowConfig => {
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => "json",
-                _ => "human",
-            };
-            let request = commands::show_config::ShowConfigRequest {
-                output_format,
-            };
-            commands::execute_show_config(tally_client, &request, config).await
-        }
-
-        Commands::ShowSubscription { subscription } => {
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => "json",
-                _ => "human",
-            };
-            let request = commands::show_subscription::ShowSubscriptionRequest {
-                subscription,
-                output_format,
-            };
-            commands::execute_show_subscription(tally_client, &request, config).await
+            commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
         }
     }
 }
