@@ -54,7 +54,7 @@ pub async fn execute(
     println!("✓ connected");
 
     // Check wallet balance with recovery flow
-    print!("Checking wallet balance... ");
+    println!("Checking wallet balance for {}...", wallet.pubkey());
     let balance = tally_client
         .rpc_client
         .get_balance_with_commitment(&wallet.pubkey(), CommitmentConfig::confirmed())
