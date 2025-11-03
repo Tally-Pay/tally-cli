@@ -70,7 +70,7 @@ pub async fn execute(
     println!("\n✅ All pre-flight checks passed!\n");
 
     // Step 3: Treasury setup
-    let treasury_ata = prompt_treasury_setup(tally_client)?;
+    let treasury_ata = prompt_treasury_setup(tally_client, &wallet)?;
 
     // Step 4: Fee setup
     let fee_bps = prompt_fee_setup()?;
@@ -302,11 +302,13 @@ fn handle_insufficient_balance(balance_sol: f64) -> Result<()> {
 
 /// Prompt for treasury setup
 ///
-/// Asks if user has existing treasury or needs to create one
+/// Asks if user has existing treasury or needs to create one.
+/// If user doesn't have existing treasury, calculates and displays the default ATA address
+/// that will be created, allowing them to press Enter to use it or override with custom address.
 ///
 /// # Errors
 /// Returns error if user input fails or pubkey parsing fails
-fn prompt_treasury_setup(tally_client: &SimpleTallyClient) -> Result<Pubkey> {
+fn prompt_treasury_setup(tally_client: &SimpleTallyClient, wallet: &Keypair) -> Result<Pubkey> {
     println!("Treasury Setup");
     println!("──────────────────────────────────────────────────");
     println!(
@@ -339,22 +341,39 @@ fn prompt_treasury_setup(tally_client: &SimpleTallyClient) -> Result<Pubkey> {
         println!("✓ Using existing treasury: {treasury}");
         Ok(treasury)
     } else {
-        // User needs to create treasury
-        println!(
-            "\n⚠️  You'll need to create a USDC Associated Token Account (ATA)\n\
-             before continuing. The CLI will automatically create it during\n\
-             merchant initialization if it doesn't exist.\n"
-        );
+        // Calculate the default ATA address upfront
+        let usdc_mint = get_usdc_mint(None)?;
+        let default_ata = tally_sdk::ata::get_associated_token_address_for_mint(
+            &wallet.pubkey(),
+            &usdc_mint,
+        )?;
 
+        // Display the default ATA that will be created
+        println!(
+            "\n💡 The CLI will automatically create a USDC treasury (ATA) for you.\n"
+        );
+        println!("Default treasury address: {default_ata}");
+        println!("                          (will be created if it doesn't exist)\n");
+
+        // Prompt with default, allowing Enter to accept or custom address to override
         let treasury_str: String = Input::new()
-            .with_prompt("Enter the treasury address to create/use")
+            .with_prompt("Treasury address (press Enter for default, or enter custom address)")
+            .allow_empty(true)
             .interact_text()
             .context("Failed to read treasury address")?;
 
-        let treasury = Pubkey::from_str(&treasury_str)
-            .context("Invalid treasury address - must be a valid Solana public key")?;
+        let treasury = if treasury_str.trim().is_empty() {
+            // User pressed Enter - use the calculated default
+            println!("✓ Using default treasury: {default_ata}");
+            default_ata
+        } else {
+            // User provided custom address - parse and use it
+            let custom_treasury = Pubkey::from_str(treasury_str.trim())
+                .context("Invalid treasury address - must be a valid Solana public key")?;
+            println!("✓ Using custom treasury: {custom_treasury}");
+            custom_treasury
+        };
 
-        println!("✓ Will use treasury: {treasury}");
         Ok(treasury)
     }
 }
