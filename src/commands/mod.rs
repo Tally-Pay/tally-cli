@@ -3,6 +3,7 @@
 //! This module contains the individual command implementations, each in their own file
 //! for better organization and maintainability.
 
+pub mod close_subscription;
 pub mod create_plan;
 pub mod dashboard;
 pub mod deactivate_plan;
@@ -15,6 +16,7 @@ pub mod update_plan_terms;
 pub mod withdraw_fees;
 
 // Re-export command execution functions for easy access
+pub use close_subscription::execute as execute_close_subscription;
 pub use create_plan::execute as execute_create_plan;
 pub use dashboard::execute as execute_dashboard_command;
 pub use deactivate_plan::execute as execute_deactivate_plan;
