@@ -342,37 +342,72 @@ async fn main() -> Result<()> {
     // Load config file (if it exists) for additional defaults
     let config_file = ConfigFile::load().unwrap_or_else(|_| ConfigFile::new());
 
-    // Use configuration with precedence: CLI flags > env vars > config file > defaults
-    // RPC URL precedence
-    let rpc_url = cli
-        .rpc_url
-        .as_deref()
-        .or_else(|| std::env::var("TALLY_RPC_URL").ok().as_deref().map(|_| config.default_rpc_url.as_str()))
-        .or_else(|| config_file.active_profile().map(|p| p.rpc_url.as_str()))
-        .unwrap_or(&config.default_rpc_url);
-
-    // Program ID precedence
-    let program_id_from_config = cli
-        .program_id
-        .as_deref()
-        .or_else(|| {
-            config_file
-                .active_profile()
-                .and_then(|p| p.program_id.as_deref())
-        });
-
     let default_output_format = parse_output_format(&config.default_output_format)?;
     let output_format = cli.output.as_ref().unwrap_or(&default_output_format);
 
-    // Initialize Tally client with optional program ID override
-    let tally_client = if let Some(program_id) = program_id_from_config {
-        SimpleTallyClient::new_with_program_id(rpc_url, program_id)?
-    } else {
-        SimpleTallyClient::new(rpc_url)?
-    };
+    // Check if this command needs SDK access (on-chain operations)
+    let needs_sdk = command_needs_sdk(&cli.command);
 
-    // Execute command
-    let result = execute_command(&cli, &tally_client, &config).await;
+    // Only initialize SDK client if the command requires on-chain access
+    let result = if needs_sdk {
+        // Use configuration with precedence: CLI flags > env vars > config file > defaults
+        let rpc_url = cli
+            .rpc_url
+            .as_deref()
+            .or_else(|| std::env::var("TALLY_RPC_URL").ok().as_deref().map(|_| config.default_rpc_url.as_str()))
+            .or_else(|| config_file.active_profile().map(|p| p.rpc_url.as_str()))
+            .unwrap_or(&config.default_rpc_url);
+
+        // Program ID precedence
+        let program_id_from_config = cli
+            .program_id
+            .as_deref()
+            .or_else(|| {
+                config_file
+                    .active_profile()
+                    .and_then(|p| p.program_id.as_deref())
+            });
+
+        // Check if program ID is available before trying to create client
+        let program_id = if let Some(id) = program_id_from_config {
+            id
+        } else if std::env::var("TALLY_PROGRAM_ID").is_err() {
+            // Neither config nor env var has program ID
+            return Err(anyhow::anyhow!(
+                "This command requires connection to Solana.\n\
+                 \n\
+                 Program ID not configured. You can fix this by:\n\
+                 \n\
+                 1. Set the TALLY_PROGRAM_ID environment variable:\n\
+                    export TALLY_PROGRAM_ID=<your-program-id>\n\
+                 \n\
+                 2. Or configure it in your profile:\n\
+                    tally-merchant config init\n\
+                    tally-merchant config set program-id <your-program-id>\n\
+                 \n\
+                 3. Or pass it as a CLI flag:\n\
+                    tally-merchant --program-id <your-program-id> <command>\n\
+                 \n\
+                 See https://github.com/Tally-Pay/tally-cli for program IDs"
+            ));
+        } else {
+            // If env var is set, use empty string to let SDK read it
+            ""
+        };
+
+        // Initialize Tally client
+        let tally_client = if program_id.is_empty() {
+            SimpleTallyClient::new(rpc_url)?
+        } else {
+            SimpleTallyClient::new_with_program_id(rpc_url, program_id)?
+        };
+
+        // Execute command with SDK client
+        execute_command(&cli, Some(&tally_client), &config).await
+    } else {
+        // Execute command without SDK client (config file operations)
+        execute_command(&cli, None, &config).await
+    };
 
     // Handle output formatting
     match result {
@@ -404,6 +439,18 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Check if a command requires SDK access (on-chain operations)
+#[allow(clippy::missing_const_for_fn)]
+fn command_needs_sdk(command: &Commands) -> bool {
+    match command {
+        Commands::Config { command } => matches!(command, ConfigCommands::Show),
+        Commands::Merchant { .. }
+        | Commands::Plan { .. }
+        | Commands::Subscription { .. }
+        | Commands::Dashboard { .. } => true,
+    }
+}
+
 /// Parse output format from string
 fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
     match format_str.to_lowercase().as_str() {
@@ -432,7 +479,7 @@ fn usdc_to_micro_units(usdc: f64) -> Result<u64> {
 /// Execute config commands
 async fn execute_config_commands(
     cli: &Cli,
-    tally_client: &SimpleTallyClient,
+    tally_client: Option<&SimpleTallyClient>,
     config: &TallyCliConfig,
     command: &ConfigCommands,
 ) -> Result<String> {
@@ -440,12 +487,13 @@ async fn execute_config_commands(
         ConfigCommands::Init { force } => commands::config_file_ops::init(*force),
 
         ConfigCommands::Show => {
+            let client = require_client(tally_client)?;
             let output_format = match cli.output {
                 Some(OutputFormat::Json) => "json",
                 _ => "human",
             };
             let request = commands::show_config::ShowConfigRequest { output_format };
-            commands::execute_show_config(tally_client, &request, config).await
+            commands::execute_show_config(client, &request, config).await
         }
 
         ConfigCommands::List { profile } => {
@@ -675,7 +723,7 @@ fn execute_dashboard_commands(
 /// Main command router
 async fn execute_command(
     cli: &Cli,
-    tally_client: &SimpleTallyClient,
+    tally_client: Option<&SimpleTallyClient>,
     config: &TallyCliConfig,
 ) -> Result<String> {
     match &cli.command {
@@ -683,16 +731,43 @@ async fn execute_command(
             execute_config_commands(cli, tally_client, config, command).await
         }
         Commands::Merchant { command } => {
-            execute_merchant_commands(cli, tally_client, config, command).await
+            let client = require_client(tally_client)?;
+            execute_merchant_commands(cli, client, config, command).await
         }
         Commands::Plan { command } => {
-            execute_plan_commands(cli, tally_client, config, command).await
+            let client = require_client(tally_client)?;
+            execute_plan_commands(cli, client, config, command).await
         }
         Commands::Subscription { command } => {
-            execute_subscription_commands(cli, tally_client, config, command).await
+            let client = require_client(tally_client)?;
+            execute_subscription_commands(cli, client, config, command).await
         }
         Commands::Dashboard { command } => {
-            execute_dashboard_commands(cli, tally_client, config, command)
+            let client = require_client(tally_client)?;
+            execute_dashboard_commands(cli, client, config, command)
         }
     }
+}
+
+/// Helper to require SDK client with helpful error message
+fn require_client(client: Option<&SimpleTallyClient>) -> Result<&SimpleTallyClient> {
+    client.ok_or_else(|| {
+        anyhow::anyhow!(
+            "This command requires connection to Solana.\n\
+             \n\
+             Program ID not configured. You can fix this by:\n\
+             \n\
+             1. Set the TALLY_PROGRAM_ID environment variable:\n\
+                export TALLY_PROGRAM_ID=<your-program-id>\n\
+             \n\
+             2. Or configure it in your profile:\n\
+                tally-merchant config init\n\
+                tally-merchant config set program-id <your-program-id>\n\
+             \n\
+             3. Or pass it as a CLI flag:\n\
+                tally-merchant --program-id <your-program-id> <command>\n\
+             \n\
+             See https://github.com/Tally-Pay/tally-cli for program IDs"
+        )
+    })
 }
