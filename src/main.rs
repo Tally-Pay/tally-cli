@@ -188,6 +188,29 @@ enum Commands {
         subscriber_keypair: Option<String>,
     },
 
+    /// Start a new subscription to a plan
+    StartSubscription {
+        /// Plan account address
+        #[arg(long)]
+        plan: String,
+
+        /// Subscriber public key
+        #[arg(long)]
+        subscriber: String,
+
+        /// Subscriber keypair (defaults to ~/.config/solana/id.json)
+        #[arg(long)]
+        subscriber_keypair: Option<String>,
+
+        /// Allowance periods multiplier (default: 3)
+        #[arg(long)]
+        allowance_periods: Option<u8>,
+
+        /// Trial duration in seconds (optional - must be 7, 14, or 30 days)
+        #[arg(long)]
+        trial_duration_secs: Option<u64>,
+    },
+
     /// Deactivate a subscription plan
     DeactivatePlan {
         /// Plan account address
@@ -488,6 +511,29 @@ async fn execute_command(
                 tally_client,
                 &request,
                 subscriber_keypair.as_deref(),
+                config,
+            )
+            .await
+        }
+
+        Commands::StartSubscription {
+            plan,
+            subscriber,
+            subscriber_keypair,
+            allowance_periods,
+            trial_duration_secs,
+        } => {
+            let request = commands::start_subscription::StartSubscriptionRequest {
+                plan,
+                subscriber,
+                allowance_periods: *allowance_periods,
+                trial_duration_secs: *trial_duration_secs,
+            };
+            commands::execute_start_subscription(
+                tally_client,
+                &request,
+                subscriber_keypair.as_deref(),
+                cli.usdc_mint.as_deref(),
                 config,
             )
             .await
