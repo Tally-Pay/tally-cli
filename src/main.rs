@@ -448,14 +448,20 @@ async fn execute_command(
         }
 
         Commands::ListPlans { merchant } => {
-            // Use default output format for now - this will be refactored with other commands
-            let output_format = commands::list_plans::OutputFormat::Human;
+            // Respect global --output flag
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
+                _ => commands::list_plans::OutputFormat::Human,
+            };
             commands::execute_list_plans(tally_client, merchant, &output_format).await
         }
 
         Commands::ListSubs { plan } => {
-            // Use default output format for now - this will be refactored with other commands
-            let output_format = commands::list_subs::OutputFormat::Human;
+            // Respect global --output flag
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
+                _ => commands::list_subs::OutputFormat::Human,
+            };
             commands::execute_list_subs(tally_client, plan, &output_format, config).await
         }
 
@@ -537,8 +543,11 @@ async fn execute_command(
         }
 
         Commands::Dashboard { command } => {
-            // Use default output format for now - this will be refactored with other commands
-            let output_format = commands::dashboard::OutputFormat::Human;
+            // Respect global --output flag
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
+                _ => commands::dashboard::OutputFormat::Human,
+            };
             let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
             commands::execute_dashboard_command(
                 tally_client,
