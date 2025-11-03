@@ -1195,17 +1195,7 @@ Impact:
   4. Add "Did you mean..." suggestions to errors
   5. Implement error codes for programmatic handling
 
-**Priority 7: Publish to crates.io & Pre-built Binaries**
-- Current state: Must build from source
-- Impact: Limits audience to Rust developers (MEDIUM)
-- Action items:
-  1. Publish package to crates.io
-  2. Set up GitHub Actions for release builds
-  3. Create install script using cargo-dist
-  4. Add pre-built binaries for common platforms
-  5. Update README with installation instructions
-
-**Priority 8: Confirmation Prompts & Dry-run**
+**Priority 7: Confirmation Prompts & Dry-run**
 - Current state: No confirmation for destructive operations
 - Impact: Users can make mistakes (MEDIUM)
 - Action items:
@@ -1215,7 +1205,7 @@ Impact:
   4. Show impact summary before confirmation
   5. Add `--force` flag for scripts
 
-**Priority 9: Improve Help Text with Examples**
+**Priority 8: Improve Help Text with Examples**
 - Current state: Help text is minimal, no examples
 - Impact: Discoverability issues (MEDIUM)
 - Action items:
@@ -1265,6 +1255,22 @@ Impact:
   3. Create revenue reports with date ranges
   4. Add subscriber cohort analysis
   5. Generate MRR charts (ASCII art or HTML)
+
+### Future Considerations - ON HOLD
+
+**Distribution & Publication** (Indefinitely postponed)
+- Publishing to crates.io and creating pre-built binaries
+- Will be considered when the CLI reaches production-ready maturity
+- Deferred action items:
+  1. Publish package to crates.io
+  2. Set up GitHub Actions for release builds
+  3. Create install script using cargo-dist
+  4. Add pre-built binaries for common platforms
+  5. Update README with installation instructions
+  6. Add Homebrew formula for macOS users
+  7. Implement `tally-merchant update` self-update command
+
+**Rationale:** The CLI is not yet ready for public distribution. Focus remains on core functionality improvements and internal testing before considering wider release.
 
 ---
 
@@ -1891,20 +1897,19 @@ With all improvements, this becomes a best-in-class CLI that merchants love to u
 
 ## Next Steps
 
-### Phase 1 - Critical Priorities:
+### Phase 1 - Critical Priorities: ✅ COMPLETE
 
-1. **Re-enable dashboard functionality** - Critical for production use
-2. **Refactor to hierarchical command structure** - Foundational improvement for UX
-3. **Create interactive init wizard** - Dramatically improve onboarding
-4. **Add config file support** - Eliminates major friction point
-5. **Implement human-friendly inputs** - Better UX for prices/periods
+1. ✅ **Re-enable dashboard functionality** - Critical for production use
+2. ✅ **Refactor to hierarchical command structure** - Foundational improvement for UX
+3. ✅ **Create interactive init wizard** - Dramatically improve onboarding
+4. ✅ **Add config file support** - Eliminates major friction point
+5. ✅ **Implement human-friendly inputs** - Better UX for prices/periods
 
 ### Phase 2 - Important Improvements:
 
 1. **Add pre-flight validation** - Reduce errors before execution
-2. **Publish to crates.io** - Lower installation barrier
-3. **Improve error messages** - Add recovery suggestions
-4. **Add confirmation prompts** - Prevent accidental operations
+2. **Improve error messages** - Add recovery suggestions
+3. **Add confirmation prompts** - Prevent accidental operations
 
 ### Phase 3 - Polish & Enhancement:
 
@@ -1912,6 +1917,10 @@ With all improvements, this becomes a best-in-class CLI that merchants love to u
 2. **Add color and progress indicators** - Polish UX
 3. **Create export and analytics features** - Power user features
 4. **Generate comprehensive documentation** - Reduce support burden
+
+### On Hold:
+
+- **Publish to crates.io** - Deferred until CLI reaches production-ready maturity
 
 ---
 
