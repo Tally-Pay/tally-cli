@@ -889,3 +889,66 @@ fn require_client(client: Option<&SimpleTallyClient>) -> Result<&SimpleTallyClie
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_usdc_to_micro_units_valid() {
+        assert_eq!(usdc_to_micro_units(10.0).unwrap(), 10_000_000);
+        assert_eq!(usdc_to_micro_units(0.5).unwrap(), 500_000);
+        assert_eq!(usdc_to_micro_units(100.25).unwrap(), 100_250_000);
+    }
+
+    #[test]
+    fn test_usdc_to_micro_units_zero() {
+        assert_eq!(usdc_to_micro_units(0.0).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_usdc_to_micro_units_negative() {
+        let result = usdc_to_micro_units(-1.0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("greater than or equal to 0"));
+    }
+
+    #[test]
+    fn test_usdc_to_micro_units_too_large() {
+        let result = usdc_to_micro_units(2_000_000.0);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("seems too high"));
+    }
+
+    #[test]
+    fn test_usdc_to_micro_units_edge_case_max() {
+        // Test maximum allowed value
+        assert_eq!(usdc_to_micro_units(1_000_000.0).unwrap(), 1_000_000_000_000);
+    }
+
+    #[test]
+    fn test_parse_output_format_human() {
+        let result = parse_output_format("human").unwrap();
+        assert!(matches!(result, OutputFormat::Human));
+    }
+
+    #[test]
+    fn test_parse_output_format_json() {
+        let result = parse_output_format("json").unwrap();
+        assert!(matches!(result, OutputFormat::Json));
+    }
+
+    #[test]
+    fn test_parse_output_format_case_insensitive() {
+        assert!(matches!(parse_output_format("Human").unwrap(), OutputFormat::Human));
+        assert!(matches!(parse_output_format("JSON").unwrap(), OutputFormat::Json));
+        assert!(matches!(parse_output_format("HUMAN").unwrap(), OutputFormat::Human));
+    }
+
+    #[test]
+    fn test_parse_output_format_invalid() {
+        let result = parse_output_format("invalid");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid output format"));
+    }
+}
