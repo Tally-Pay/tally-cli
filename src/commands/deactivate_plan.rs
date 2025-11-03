@@ -2,12 +2,9 @@
 
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
-use tally_sdk::{
-    load_keypair, pda,
-    SimpleTallyClient,
-};
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
+use tally_sdk::{load_keypair, pda, SimpleTallyClient};
 use tracing::info;
 
 /// Execute the deactivate plan command

@@ -1,8 +1,8 @@
 //! Show global configuration account details
 
+use crate::config::TallyCliConfig;
 use anyhow::{Context, Result};
 use tally_sdk::SimpleTallyClient;
-use crate::config::TallyCliConfig;
 
 /// Request to show config details
 pub struct ShowConfigRequest<'a> {
@@ -59,7 +59,8 @@ pub async fn execute(
         Ok(serde_json::to_string_pretty(&json_output)?)
     } else {
         // Human-readable output
-        let pending_auth = cfg.pending_authority
+        let pending_auth = cfg
+            .pending_authority
             .map_or_else(|| "None".to_string(), |p| p.to_string());
 
         Ok(format!(

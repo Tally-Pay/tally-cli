@@ -328,179 +328,233 @@ fn usdc_to_micro_units(usdc: f64) -> Result<u64> {
     Ok(micro_units)
 }
 
-#[allow(clippy::cognitive_complexity)]
+/// Execute config commands
+async fn execute_config_commands(
+    cli: &Cli,
+    tally_client: &SimpleTallyClient,
+    config: &TallyCliConfig,
+    command: &ConfigCommands,
+) -> Result<String> {
+    match command {
+        ConfigCommands::Show => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_config::ShowConfigRequest { output_format };
+            commands::execute_show_config(tally_client, &request, config).await
+        }
+    }
+}
+
+/// Execute merchant commands
+async fn execute_merchant_commands(
+    cli: &Cli,
+    tally_client: &SimpleTallyClient,
+    config: &TallyCliConfig,
+    command: &MerchantCommands,
+) -> Result<String> {
+    match command {
+        MerchantCommands::Init {
+            authority,
+            treasury,
+            fee_bps,
+        } => {
+            commands::execute_init_merchant(
+                tally_client,
+                authority.as_deref(),
+                treasury,
+                *fee_bps,
+                cli.usdc_mint.as_deref(),
+                config,
+            )
+            .await
+        }
+
+        MerchantCommands::Show { merchant } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_merchant::ShowMerchantRequest {
+                merchant,
+                output_format,
+            };
+            commands::execute_show_merchant(tally_client, &request, config).await
+        }
+    }
+}
+
+/// Execute plan commands
+async fn execute_plan_commands(
+    cli: &Cli,
+    tally_client: &SimpleTallyClient,
+    config: &TallyCliConfig,
+    command: &PlanCommands,
+) -> Result<String> {
+    match command {
+        PlanCommands::Create {
+            merchant,
+            id,
+            name,
+            price_usdc,
+            period_days,
+            period_months,
+            grace_days,
+            authority,
+        } => {
+            // Convert USDC to micro-units (6 decimals) with validation
+            let price_micro = usdc_to_micro_units(*price_usdc)?;
+
+            // Convert period to seconds (prefer days, allow months as alternative)
+            let period_secs = period_months.map_or_else(
+                || {
+                    period_days.map_or_else(
+                        || {
+                            Err(anyhow::anyhow!(
+                                "Either --period-days or --period-months is required"
+                            ))
+                        },
+                        |days| Ok(i64::from(days) * 86400),
+                    )
+                },
+                |months| Ok(i64::from(months) * 30 * 86400),
+            )?;
+
+            // Convert grace period to seconds
+            let grace_secs = i64::from(*grace_days) * 86400;
+
+            let request = commands::create_plan::CreatePlanRequest {
+                merchant_str: merchant,
+                plan_id: id,
+                plan_name: name,
+                price_usdc: price_micro,
+                period_secs,
+                grace_secs,
+                authority_path: authority.as_deref(),
+            };
+            commands::execute_create_plan(tally_client, &request, config).await
+        }
+
+        PlanCommands::List { merchant } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
+                _ => commands::list_plans::OutputFormat::Human,
+            };
+            commands::execute_list_plans(tally_client, merchant, &output_format).await
+        }
+
+        PlanCommands::Update {
+            plan,
+            price_usdc,
+            period_days,
+            period_months,
+            grace_days,
+            authority,
+        } => {
+            // Convert USDC to micro-units if provided
+            let new_price = if let Some(p) = price_usdc {
+                Some(usdc_to_micro_units(*p)?)
+            } else {
+                None
+            };
+
+            // Convert period to seconds if provided (prefer days, allow months)
+            let new_period_seconds = period_months.map_or_else(
+                || period_days.map(|d| i64::from(d) * 86400),
+                |months| Some(i64::from(months) * 30 * 86400),
+            );
+
+            // Convert grace period to seconds if provided
+            let new_grace_period_seconds = grace_days.map(|d| i64::from(d) * 86400);
+
+            let request = commands::update_plan_terms::UpdatePlanTermsRequest {
+                plan,
+                new_price,
+                new_period_seconds,
+                new_grace_period_seconds,
+            };
+            commands::execute_update_plan_terms(
+                tally_client,
+                &request,
+                authority.as_deref(),
+                config,
+            )
+            .await
+        }
+
+        PlanCommands::Deactivate { plan, authority } => {
+            commands::execute_deactivate_plan(tally_client, plan, authority.as_deref()).await
+        }
+    }
+}
+
+/// Execute subscription commands
+async fn execute_subscription_commands(
+    cli: &Cli,
+    tally_client: &SimpleTallyClient,
+    config: &TallyCliConfig,
+    command: &SubscriptionCommands,
+) -> Result<String> {
+    match command {
+        SubscriptionCommands::List { plan } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
+                _ => commands::list_subs::OutputFormat::Human,
+            };
+            commands::execute_list_subs(tally_client, plan, &output_format, config).await
+        }
+
+        SubscriptionCommands::Show { subscription } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_subscription::ShowSubscriptionRequest {
+                subscription,
+                output_format,
+            };
+            commands::execute_show_subscription(tally_client, &request, config).await
+        }
+    }
+}
+
+/// Execute dashboard commands
+fn execute_dashboard_commands(
+    cli: &Cli,
+    tally_client: &SimpleTallyClient,
+    config: &TallyCliConfig,
+    command: &DashboardCommands,
+) -> Result<String> {
+    let output_format = match cli.output {
+        Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
+        _ => commands::dashboard::OutputFormat::Human,
+    };
+    let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
+    commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
+}
+
+/// Main command router
 async fn execute_command(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
 ) -> Result<String> {
     match &cli.command {
-        Commands::Config { command } => match command {
-            ConfigCommands::Show => {
-                let output_format = match cli.output {
-                    Some(OutputFormat::Json) => "json",
-                    _ => "human",
-                };
-                let request = commands::show_config::ShowConfigRequest { output_format };
-                commands::execute_show_config(tally_client, &request, config).await
-            }
-        },
-
-        Commands::Merchant { command } => match command {
-            MerchantCommands::Init {
-                authority,
-                treasury,
-                fee_bps,
-            } => {
-                commands::execute_init_merchant(
-                    tally_client,
-                    authority.as_deref(),
-                    treasury,
-                    *fee_bps,
-                    cli.usdc_mint.as_deref(),
-                    config,
-                )
-                .await
-            }
-
-            MerchantCommands::Show { merchant } => {
-                let output_format = match cli.output {
-                    Some(OutputFormat::Json) => "json",
-                    _ => "human",
-                };
-                let request = commands::show_merchant::ShowMerchantRequest {
-                    merchant,
-                    output_format,
-                };
-                commands::execute_show_merchant(tally_client, &request, config).await
-            }
-        },
-
-        Commands::Plan { command } => match command {
-            PlanCommands::Create {
-                merchant,
-                id,
-                name,
-                price_usdc,
-                period_days,
-                period_months,
-                grace_days,
-                authority,
-            } => {
-                // Convert USDC to micro-units (6 decimals) with validation
-                let price_micro = usdc_to_micro_units(*price_usdc)?;
-
-                // Convert period to seconds (prefer days, allow months as alternative)
-                let period_secs = period_months.map_or_else(
-                    || {
-                        period_days.map_or_else(
-                            || {
-                                Err(anyhow::anyhow!(
-                                    "Either --period-days or --period-months is required"
-                                ))
-                            },
-                            |days| Ok(i64::from(days) * 86400),
-                        )
-                    },
-                    |months| Ok(i64::from(months) * 30 * 86400),
-                )?;
-
-                // Convert grace period to seconds
-                let grace_secs = i64::from(*grace_days) * 86400;
-
-                let request = commands::create_plan::CreatePlanRequest {
-                    merchant_str: merchant,
-                    plan_id: id,
-                    plan_name: name,
-                    price_usdc: price_micro,
-                    period_secs,
-                    grace_secs,
-                    authority_path: authority.as_deref(),
-                };
-                commands::execute_create_plan(tally_client, &request, config).await
-            }
-
-            PlanCommands::List { merchant } => {
-                let output_format = match cli.output {
-                    Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
-                    _ => commands::list_plans::OutputFormat::Human,
-                };
-                commands::execute_list_plans(tally_client, merchant, &output_format).await
-            }
-
-            PlanCommands::Update {
-                plan,
-                price_usdc,
-                period_days,
-                period_months,
-                grace_days,
-                authority,
-            } => {
-                // Convert USDC to micro-units if provided
-                let new_price = if let Some(p) = price_usdc {
-                    Some(usdc_to_micro_units(*p)?)
-                } else {
-                    None
-                };
-
-                // Convert period to seconds if provided (prefer days, allow months)
-                let new_period_seconds = period_months.map_or_else(
-                    || period_days.map(|d| i64::from(d) * 86400),
-                    |months| Some(i64::from(months) * 30 * 86400),
-                );
-
-                // Convert grace period to seconds if provided
-                let new_grace_period_seconds = grace_days.map(|d| i64::from(d) * 86400);
-
-                let request = commands::update_plan_terms::UpdatePlanTermsRequest {
-                    plan,
-                    new_price,
-                    new_period_seconds,
-                    new_grace_period_seconds,
-                };
-                commands::execute_update_plan_terms(
-                    tally_client,
-                    &request,
-                    authority.as_deref(),
-                    config,
-                )
-                .await
-            }
-
-            PlanCommands::Deactivate { plan, authority } => {
-                commands::execute_deactivate_plan(tally_client, plan, authority.as_deref()).await
-            }
-        },
-
-        Commands::Subscription { command } => match command {
-            SubscriptionCommands::List { plan } => {
-                let output_format = match cli.output {
-                    Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
-                    _ => commands::list_subs::OutputFormat::Human,
-                };
-                commands::execute_list_subs(tally_client, plan, &output_format, config).await
-            }
-
-            SubscriptionCommands::Show { subscription } => {
-                let output_format = match cli.output {
-                    Some(OutputFormat::Json) => "json",
-                    _ => "human",
-                };
-                let request = commands::show_subscription::ShowSubscriptionRequest {
-                    subscription,
-                    output_format,
-                };
-                commands::execute_show_subscription(tally_client, &request, config).await
-            }
-        },
-
+        Commands::Config { command } => {
+            execute_config_commands(cli, tally_client, config, command).await
+        }
+        Commands::Merchant { command } => {
+            execute_merchant_commands(cli, tally_client, config, command).await
+        }
+        Commands::Plan { command } => {
+            execute_plan_commands(cli, tally_client, config, command).await
+        }
+        Commands::Subscription { command } => {
+            execute_subscription_commands(cli, tally_client, config, command).await
+        }
         Commands::Dashboard { command } => {
-            let output_format = match cli.output {
-                Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
-                _ => commands::dashboard::OutputFormat::Human,
-            };
-            let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
-            commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
+            execute_dashboard_commands(cli, tally_client, config, command)
         }
     }
 }

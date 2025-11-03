@@ -1,10 +1,10 @@
 //! Show merchant account details
 
-use anyhow::{Context, Result};
-use tally_sdk::SimpleTallyClient;
-use tally_sdk::solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use crate::config::TallyCliConfig;
+use anyhow::{Context, Result};
+use std::str::FromStr;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::SimpleTallyClient;
 
 /// Request to show merchant details
 pub struct ShowMerchantRequest<'a> {
@@ -36,8 +36,8 @@ pub async fn execute(
     config: &TallyCliConfig,
 ) -> Result<String> {
     // Parse merchant address
-    let merchant_address = Pubkey::from_str(request.merchant)
-        .context("Failed to parse merchant public key")?;
+    let merchant_address =
+        Pubkey::from_str(request.merchant).context("Failed to parse merchant public key")?;
 
     // Fetch merchant account
     let merchant = tally_client

@@ -3,10 +3,10 @@
 use crate::config::TallyCliConfig;
 use anyhow::{Context, Result};
 use clap::ValueEnum;
-use tally_sdk::{DashboardClient, SimpleTallyClient};
-use tally_sdk::solana_sdk::pubkey::Pubkey;
 use std::fmt::Write as _;
 use std::str::FromStr;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::{DashboardClient, SimpleTallyClient};
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum OutputFormat {
@@ -39,8 +39,8 @@ pub fn execute_dashboard_command<T: std::fmt::Debug + Send + Sync>(
     config: &TallyCliConfig,
 ) -> Result<String> {
     // Create dashboard client
-    let dashboard_client = DashboardClient::new(rpc_url)
-        .context("Failed to create dashboard client")?;
+    let dashboard_client =
+        DashboardClient::new(rpc_url).context("Failed to create dashboard client")?;
 
     // Route to appropriate handler based on command type
     // Since we don't have access to the actual DashboardCommands type here,
@@ -83,7 +83,8 @@ fn extract_and_execute_overview(
         .context(format!("Invalid merchant address: {merchant_str}"))?;
 
     // Get overview data
-    let overview = dashboard_client.get_merchant_overview(&merchant)
+    let overview = dashboard_client
+        .get_merchant_overview(&merchant)
         .context("Failed to fetch merchant overview")?;
 
     // Format output
@@ -98,25 +99,58 @@ fn extract_and_execute_overview(
             output.push('\n');
 
             output.push_str("\nRevenue Statistics:\n");
-            writeln!(output, "  Total Revenue:        {} USDC",
-                config.format_usdc(overview.total_revenue))?;
-            writeln!(output, "  Monthly Revenue:      {} USDC",
-                config.format_usdc(overview.monthly_revenue))?;
-            writeln!(output, "  Avg Revenue per User: {} USDC",
-                config.format_usdc(overview.average_revenue_per_user))?;
+            writeln!(
+                output,
+                "  Total Revenue:        {} USDC",
+                config.format_usdc(overview.total_revenue)
+            )?;
+            writeln!(
+                output,
+                "  Monthly Revenue:      {} USDC",
+                config.format_usdc(overview.monthly_revenue)
+            )?;
+            writeln!(
+                output,
+                "  Avg Revenue per User: {} USDC",
+                config.format_usdc(overview.average_revenue_per_user)
+            )?;
 
             output.push_str("\nSubscription Statistics:\n");
             writeln!(output, "  Total Plans:          {}", overview.total_plans)?;
-            writeln!(output, "  Active Subscriptions: {}", overview.active_subscriptions)?;
-            writeln!(output, "  Inactive Subscriptions: {}", overview.inactive_subscriptions)?;
-            writeln!(output, "  Churn Rate:           {:.2}%", overview.churn_rate())?;
+            writeln!(
+                output,
+                "  Active Subscriptions: {}",
+                overview.active_subscriptions
+            )?;
+            writeln!(
+                output,
+                "  Inactive Subscriptions: {}",
+                overview.inactive_subscriptions
+            )?;
+            writeln!(
+                output,
+                "  Churn Rate:           {:.2}%",
+                overview.churn_rate()
+            )?;
 
             output.push_str("\nMonthly Growth:\n");
-            writeln!(output, "  New Subscriptions:    {}", overview.monthly_new_subscriptions)?;
-            writeln!(output, "  Canceled Subscriptions: {}", overview.monthly_canceled_subscriptions)?;
+            writeln!(
+                output,
+                "  New Subscriptions:    {}",
+                overview.monthly_new_subscriptions
+            )?;
+            writeln!(
+                output,
+                "  Canceled Subscriptions: {}",
+                overview.monthly_canceled_subscriptions
+            )?;
 
             output.push_str("\nConfiguration:\n");
-            writeln!(output, "  Merchant Authority:   {}", overview.merchant_authority)?;
+            writeln!(
+                output,
+                "  Merchant Authority:   {}",
+                overview.merchant_authority
+            )?;
             writeln!(output, "  USDC Mint:            {}", overview.usdc_mint)?;
 
             Ok(output)
@@ -139,11 +173,11 @@ fn extract_and_execute_analytics(
         .and_then(|s| s.trim_matches(|c| c == '"' || c == ',').split(',').next())
         .context("Failed to extract plan address from command")?;
 
-    let plan = Pubkey::from_str(plan_str)
-        .context(format!("Invalid plan address: {plan_str}"))?;
+    let plan = Pubkey::from_str(plan_str).context(format!("Invalid plan address: {plan_str}"))?;
 
     // Get plan analytics
-    let analytics = dashboard_client.get_plan_analytics(&plan)
+    let analytics = dashboard_client
+        .get_plan_analytics(&plan)
         .context("Failed to fetch plan analytics")?;
 
     // Format output
@@ -164,28 +198,69 @@ fn extract_and_execute_analytics(
             output.push_str("\nPlan Information:\n");
             writeln!(output, "  Plan ID:              {plan_id_str}")?;
             writeln!(output, "  Plan Address:         {}", analytics.plan_address)?;
-            writeln!(output, "  Price:                {} USDC",
-                config.format_usdc(analytics.plan.price_usdc))?;
-            writeln!(output, "  Period:               {} seconds", analytics.plan.period_secs)?;
+            writeln!(
+                output,
+                "  Price:                {} USDC",
+                config.format_usdc(analytics.plan.price_usdc)
+            )?;
+            writeln!(
+                output,
+                "  Period:               {} seconds",
+                analytics.plan.period_secs
+            )?;
             writeln!(output, "  Active:               {}", analytics.plan.active)?;
 
             output.push_str("\nRevenue Statistics:\n");
-            writeln!(output, "  Total Revenue:        {} USDC",
-                config.format_usdc(analytics.total_revenue))?;
-            writeln!(output, "  Monthly Revenue:      {} USDC",
-                config.format_usdc(analytics.monthly_revenue))?;
+            writeln!(
+                output,
+                "  Total Revenue:        {} USDC",
+                config.format_usdc(analytics.total_revenue)
+            )?;
+            writeln!(
+                output,
+                "  Monthly Revenue:      {} USDC",
+                config.format_usdc(analytics.monthly_revenue)
+            )?;
 
             output.push_str("\nSubscription Statistics:\n");
             writeln!(output, "  Active Count:         {}", analytics.active_count)?;
-            writeln!(output, "  Inactive Count:       {}", analytics.inactive_count)?;
-            writeln!(output, "  Total Subscriptions:  {}", analytics.total_subscriptions())?;
-            writeln!(output, "  Churn Rate:           {:.2}%", analytics.churn_rate())?;
-            writeln!(output, "  Avg Duration:         {:.1} days", analytics.average_duration_days)?;
+            writeln!(
+                output,
+                "  Inactive Count:       {}",
+                analytics.inactive_count
+            )?;
+            writeln!(
+                output,
+                "  Total Subscriptions:  {}",
+                analytics.total_subscriptions()
+            )?;
+            writeln!(
+                output,
+                "  Churn Rate:           {:.2}%",
+                analytics.churn_rate()
+            )?;
+            writeln!(
+                output,
+                "  Avg Duration:         {:.1} days",
+                analytics.average_duration_days
+            )?;
 
             output.push_str("\nMonthly Growth:\n");
-            writeln!(output, "  New Subscriptions:    {}", analytics.monthly_new_subscriptions)?;
-            writeln!(output, "  Canceled Subscriptions: {}", analytics.monthly_canceled_subscriptions)?;
-            writeln!(output, "  Growth Rate:          {:.2}%", analytics.monthly_growth_rate())?;
+            writeln!(
+                output,
+                "  New Subscriptions:    {}",
+                analytics.monthly_new_subscriptions
+            )?;
+            writeln!(
+                output,
+                "  Canceled Subscriptions: {}",
+                analytics.monthly_canceled_subscriptions
+            )?;
+            writeln!(
+                output,
+                "  Growth Rate:          {:.2}%",
+                analytics.monthly_growth_rate()
+            )?;
 
             if let Some(conversion_rate) = analytics.conversion_rate {
                 writeln!(output, "  Conversion Rate:      {conversion_rate:.2}%")?;
@@ -232,14 +307,18 @@ fn extract_and_execute_events(
     };
 
     // Get recent events
-    let events = dashboard_client.poll_recent_events(&merchant, since_timestamp)
+    let events = dashboard_client
+        .poll_recent_events(&merchant, since_timestamp)
         .context("Failed to fetch recent events")?;
 
     // Format output
     let mut output = format!("\nRecent Events for Merchant: {merchant}\n");
     output.push_str(&"=".repeat(70));
     output.push('\n');
-    writeln!(output, "\nShowing events since timestamp: {since_timestamp}\n")?;
+    writeln!(
+        output,
+        "\nShowing events since timestamp: {since_timestamp}\n"
+    )?;
 
     if events.is_empty() {
         output.push_str("No events found in the specified time period.\n");
@@ -292,7 +371,8 @@ fn extract_and_execute_subscriptions(
     let active_only = command_str.contains("active_only: true");
 
     // Get subscriptions
-    let mut subscriptions = dashboard_client.get_live_subscriptions(&merchant)
+    let mut subscriptions = dashboard_client
+        .get_live_subscriptions(&merchant)
         .context("Failed to fetch subscriptions")?;
 
     // Filter if active_only
@@ -320,7 +400,8 @@ fn extract_and_execute_subscriptions(
                 output.push_str("No subscriptions found.\n");
             } else {
                 // Header
-                writeln!(output,
+                writeln!(
+                    output,
                     "{:<45} {:<45} {:<12} {:<12} {:<12}",
                     "Subscriber", "Plan", "Status", "Renewals", "Total Paid"
                 )?;
@@ -335,7 +416,8 @@ fn extract_and_execute_subscriptions(
                     let status_str = format!("{:?}", sub.status);
                     let total_paid_str = format!("{} USDC", config.format_usdc(sub.total_paid));
 
-                    writeln!(output,
+                    writeln!(
+                        output,
                         "{:<45} {:<45} {:<12} {:<12} {:<12}",
                         truncate_string(&subscriber_str, 44),
                         truncate_string(&plan_id_str, 44),
@@ -367,7 +449,10 @@ mod tests {
     #[test]
     fn test_truncate_string() {
         assert_eq!(truncate_string("short", 10), "short");
-        assert_eq!(truncate_string("this is a very long string", 10), "this is...");
+        assert_eq!(
+            truncate_string("this is a very long string", 10),
+            "this is..."
+        );
         assert_eq!(truncate_string("exactly10!", 10), "exactly10!");
     }
 }

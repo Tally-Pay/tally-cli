@@ -3,12 +3,9 @@
 use crate::config::TallyCliConfig;
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
-use tally_sdk::{
-    get_usdc_mint, load_keypair,
-    SimpleTallyClient,
-};
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
+use tally_sdk::{get_usdc_mint, load_keypair, SimpleTallyClient};
 use tracing::info;
 
 /// Execute the init merchant command
@@ -47,8 +44,7 @@ pub async fn execute(
 
     info!(
         "Transaction confirmed: {}, created_ata: {}",
-        signature,
-        created_ata
+        signature, created_ata
     );
 
     // Return success message with merchant PDA, transaction signature, and ATA creation info

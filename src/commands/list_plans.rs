@@ -4,8 +4,8 @@ use crate::utils::formatting::{format_plans_human, format_plans_json, PlanInfo};
 use anyhow::{anyhow, Context, Result};
 use clap::ValueEnum;
 use std::str::FromStr;
-use tally_sdk::SimpleTallyClient;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::SimpleTallyClient;
 use tracing::info;
 
 #[derive(Clone, Debug, ValueEnum)]

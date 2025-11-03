@@ -3,13 +3,9 @@
 use crate::config::TallyCliConfig;
 use anyhow::{anyhow, Context, Result};
 use std::str::FromStr;
-use tally_sdk::{
-    load_keypair,
-    program_types::CreatePlanArgs,
-    SimpleTallyClient,
-};
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
+use tally_sdk::{load_keypair, program_types::CreatePlanArgs, SimpleTallyClient};
 use tracing::info;
 
 /// Arguments for creating a plan
@@ -46,8 +42,8 @@ pub async fn execute(
     info!("Expected merchant PDA: {expected_merchant_pda}");
 
     // Load authority keypair
-    let authority = load_keypair(request.authority_path)
-        .context("Failed to load authority keypair")?;
+    let authority =
+        load_keypair(request.authority_path).context("Failed to load authority keypair")?;
     info!("Using authority: {}", authority.pubkey());
 
     // Validate authority matches the provided merchant PDA

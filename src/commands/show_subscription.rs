@@ -1,11 +1,11 @@
 //! Show subscription account details
 
-use anyhow::{Context, Result};
-use tally_sdk::SimpleTallyClient;
-use tally_sdk::solana_sdk::pubkey::Pubkey;
-use std::str::FromStr;
 use crate::config::TallyCliConfig;
 use crate::utils::formatting;
+use anyhow::{Context, Result};
+use std::str::FromStr;
+use tally_sdk::solana_sdk::pubkey::Pubkey;
+use tally_sdk::SimpleTallyClient;
 
 /// Request to show subscription details
 pub struct ShowSubscriptionRequest<'a> {
@@ -80,14 +80,15 @@ pub async fn execute(
             "Canceled"
         };
 
-        let trial_info = subscription.trial_ends_at.map_or_else(
-            String::new,
-            |trial_ends| format!(
-                "Trial Ends:            {} ({})\n",
-                trial_ends,
-                formatting::format_timestamp(trial_ends)
-            )
-        );
+        let trial_info = subscription
+            .trial_ends_at
+            .map_or_else(String::new, |trial_ends| {
+                format!(
+                    "Trial Ends:            {} ({})\n",
+                    trial_ends,
+                    formatting::format_timestamp(trial_ends)
+                )
+            });
 
         Ok(format!(
             "Subscription Account Details

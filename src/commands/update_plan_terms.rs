@@ -3,9 +3,9 @@
 use crate::config::TallyCliConfig;
 use anyhow::{anyhow, Context, Result};
 use std::str::FromStr;
-use tally_sdk::{load_keypair, SimpleTallyClient};
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
+use tally_sdk::{load_keypair, SimpleTallyClient};
 use tracing::info;
 
 /// Request parameters for updating plan terms
@@ -51,8 +51,8 @@ pub async fn execute(
     info!("Updating plan: {}", plan);
 
     // Load merchant authority keypair
-    let authority = load_keypair(authority_path)
-        .context("Failed to load merchant authority keypair")?;
+    let authority =
+        load_keypair(authority_path).context("Failed to load merchant authority keypair")?;
     info!("Using authority: {}", authority.pubkey());
 
     // Validate parameters
@@ -72,17 +72,13 @@ pub async fn execute(
 
     if let Some(grace) = request.new_grace_period_seconds {
         if grace < 0 {
-            return Err(anyhow!(
-                "Grace period cannot be negative, got {grace}"
-            ));
+            return Err(anyhow!("Grace period cannot be negative, got {grace}"));
         }
     }
 
     // Check if plan exists
     if !tally_client.account_exists(&plan)? {
-        return Err(anyhow!(
-            "Plan account does not exist at address: {plan}"
-        ));
+        return Err(anyhow!("Plan account does not exist at address: {plan}"));
     }
 
     // Build update plan terms instruction using transaction builder
@@ -97,15 +93,15 @@ pub async fn execute(
 
     if let Some(period) = request.new_period_seconds {
         // Convert i64 to u64 for period
-        let period_u64 = u64::try_from(period)
-            .map_err(|e| anyhow!("Invalid period value {period}: {e}"))?;
+        let period_u64 =
+            u64::try_from(period).map_err(|e| anyhow!("Invalid period value {period}: {e}"))?;
         builder = builder.period_secs(period_u64);
     }
 
     if let Some(grace) = request.new_grace_period_seconds {
         // Convert i64 to u64 for grace period
-        let grace_u64 = u64::try_from(grace)
-            .map_err(|e| anyhow!("Invalid grace period value {grace}: {e}"))?;
+        let grace_u64 =
+            u64::try_from(grace).map_err(|e| anyhow!("Invalid grace period value {grace}: {e}"))?;
         builder = builder.grace_secs(grace_u64);
     }
 
@@ -130,12 +126,16 @@ pub async fn execute(
     if let Some(period) = request.new_period_seconds {
         let period_days = period / 86400;
         let period_hours = (period % 86400) / 3600;
-        updates.push(format!("Period: {period} seconds (~{period_days} days, {period_hours} hours)"));
+        updates.push(format!(
+            "Period: {period} seconds (~{period_days} days, {period_hours} hours)"
+        ));
     }
 
     if let Some(grace) = request.new_grace_period_seconds {
         let grace_hours = grace / 3600;
-        updates.push(format!("Grace period: {grace} seconds ({grace_hours} hours)"));
+        updates.push(format!(
+            "Grace period: {grace} seconds ({grace_hours} hours)"
+        ));
     }
 
     let updates_str = updates.join("\n  ");
@@ -196,7 +196,7 @@ mod tests {
         let request = UpdatePlanTermsRequest {
             plan: "11111111111111111111111111111111",
             new_price: Some(9_000_000),
-            new_period_seconds: Some(2_592_000), // 30 days
+            new_period_seconds: Some(2_592_000),     // 30 days
             new_grace_period_seconds: Some(604_800), // 7 days
         };
 
