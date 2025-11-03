@@ -1,7 +1,9 @@
 //! Create plan command implementation
 
 use crate::config::TallyCliConfig;
+use crate::utils::colors::Theme;
 use anyhow::{anyhow, Context, Result};
+use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
@@ -95,9 +97,19 @@ pub async fn execute(
 
     // Return success message with plan details
     let price_usdc_display = config.format_usdc(request.price_usdc);
-    Ok(format!(
-        "Plan created successfully!\nPlan PDA: {plan_pda}\nPlan ID: {}\nName: {}\nPrice: {price_usdc_display:.6} USDC\nPeriod: {period_secs_u64} seconds\nGrace: {grace_secs_u64} seconds\nTransaction signature: {signature}",
-        request.plan_id,
-        request.plan_name
-    ))
+
+    // Build output with colors - use write! to construct string
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::success("Plan created successfully!"))?;
+    writeln!(&mut output, "{} {}", Theme::info("Plan PDA:"), Theme::highlight(&plan_pda.to_string()))?;
+    writeln!(&mut output, "{} {}", Theme::info("Plan ID:"), Theme::value(request.plan_id))?;
+    writeln!(&mut output, "{} {}", Theme::info("Name:"), Theme::value(request.plan_name))?;
+    writeln!(&mut output, "{} {:.6} USDC", Theme::info("Price:"), price_usdc_display)?;
+    writeln!(&mut output, "{} {} seconds", Theme::info("Period:"), period_secs_u64)?;
+    writeln!(&mut output, "{} {} seconds", Theme::info("Grace:"), grace_secs_u64)?;
+
+    // Write signature - using format! directly to avoid clippy warnings
+    write!(&mut output, "{} {signature}", Theme::info("Transaction signature:"))?;
+
+    Ok(output)
 }

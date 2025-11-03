@@ -18,9 +18,8 @@ pub async fn execute(
     tally_client: &SimpleTallyClient,
     authority_path: Option<&str>,
     treasury_str: &str,
-    fee_bps: u16,
     usdc_mint_str: Option<&str>,
-    config: &TallyCliConfig,
+    _config: &TallyCliConfig,
 ) -> Result<String> {
     info!("Starting merchant initialization");
 
@@ -39,8 +38,9 @@ pub async fn execute(
     info!("Using treasury ATA: {}", treasury_ata);
 
     // Use the new unified method that handles both ATA existence scenarios
+    // Platform fee is automatically set to Free tier (2.0%) by the program
     let (merchant_pda, signature, created_ata) = tally_client
-        .initialize_merchant_with_treasury(&authority, &usdc_mint, &treasury_ata, fee_bps)
+        .initialize_merchant_with_treasury(&authority, &usdc_mint, &treasury_ata)
         .map_err(|e| anyhow!("Failed to initialize merchant: {e}"))?;
 
     info!(
@@ -56,7 +56,6 @@ pub async fn execute(
     };
 
     // Return success message with merchant PDA, transaction signature, and ATA creation info
-    let fee_percentage = config.format_fee_percentage(fee_bps);
     let ata_message = if created_ata {
         "Treasury ATA created and merchant initialized"
     } else {
@@ -64,14 +63,14 @@ pub async fn execute(
     };
 
     Ok(format!(
-        "Merchant initialization successful!\n{}\nMerchant PDA: {}\nTransaction signature: {}\nAuthority: {}\nTreasury ATA: {}\nPlatform fee: {} bps ({:.1}%){}",
+        "Merchant initialization successful!\n{}\nMerchant PDA: {}\nTransaction signature: {}\nAuthority: {}\nTreasury ATA: {}\nTier: Free (platform fee: 200 bps / 2.0%)\n\n\
+        Note: New merchants start on the Free tier.\n\
+        Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers.{}",
         ata_message,
         merchant_pda,
         signature,
         authority.pubkey(),
         treasury_ata,
-        fee_bps,
-        fee_percentage,
         config_message
     ))
 }

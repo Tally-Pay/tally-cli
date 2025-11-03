@@ -35,7 +35,7 @@ fn lamports_to_sol(lamports: u64) -> f64 {
 /// Returns error if any step fails (wallet selection, RPC connectivity, merchant initialization)
 pub async fn execute(
     tally_client: &SimpleTallyClient,
-    config: &TallyCliConfig,
+    _config: &TallyCliConfig,
     skip_plan: bool,
 ) -> Result<String> {
     println!("\n🚀 Welcome to Tally! Let's set up your merchant account.\n");
@@ -72,21 +72,19 @@ pub async fn execute(
     // Step 3: Treasury setup
     let treasury_ata = prompt_treasury_setup(tally_client, &wallet)?;
 
-    // Step 4: Fee setup
-    let fee_bps = prompt_fee_setup()?;
-
-    // Step 5: Initialize merchant
+    // Step 4: Initialize merchant
     println!("\n⏳ Initializing merchant account...");
+    println!("   • Your merchant will be created on the Free tier (2.0% platform fee)");
+    println!("   • Contact platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%)");
 
     let usdc_mint = get_usdc_mint(None)?;
     let (merchant_pda, signature, created_ata) = tally_client
-        .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata, fee_bps)
+        .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata)
         .context("Failed to initialize merchant")?;
 
     println!("✅ Merchant account created!\n");
 
-    // Step 6: Display results
-    let fee_percentage = config.format_fee_percentage(fee_bps);
+    // Step 5: Display results
     let ata_message = if created_ata {
         "Treasury ATA created"
     } else {
@@ -100,11 +98,14 @@ pub async fn execute(
          Merchant PDA:       {}\n\
          Authority:          {}\n\
          Treasury ATA:       {}\n\
-         Fee:                {} bps ({:.1}%)\n\
+         Tier:               Free (platform fee: 200 bps / 2.0%)\n\
          Transaction:        {}\n\
          Status:             {}\n\
          \n\
          ✓ Merchant PDA saved to config file\n\
+         \n\
+         Note: New merchants start on the Free tier.\n\
+         Contact the platform authority to upgrade tiers.\n\
          \n\
          Next Steps:\n\
          • Create your first subscription plan\n\
@@ -113,8 +114,6 @@ pub async fn execute(
         merchant_pda,
         wallet.pubkey(),
         treasury_ata,
-        fee_bps,
-        fee_percentage,
         signature,
         ata_message
     );
@@ -376,38 +375,4 @@ fn prompt_treasury_setup(tally_client: &SimpleTallyClient, wallet: &Keypair) -> 
 
         Ok(treasury)
     }
-}
-
-/// Prompt for fee setup
-///
-/// Asks user what merchant fee they want to charge
-///
-/// # Errors
-/// Returns error if user input fails or fee percentage is invalid
-fn prompt_fee_setup() -> Result<u16> {
-    println!("\nMerchant Fee Setup");
-    println!("──────────────────────────────────────────────────");
-    println!(
-        "The merchant fee is YOUR fee charged on top of the\n\
-         subscription price. This goes to your treasury.\n\
-         \n\
-         Recommended: 0.5-2%\n"
-    );
-
-    let fee_pct: f64 = Input::new()
-        .with_prompt("Fee percentage (0-10%)")
-        .default(0.5)
-        .interact_text()
-        .context("Failed to read fee percentage")?;
-
-    if !(0.0..=10.0).contains(&fee_pct) {
-        return Err(anyhow!("Fee must be between 0% and 10%, got {fee_pct:.2}%"));
-    }
-
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let fee_bps = (fee_pct * 100.0) as u16;
-
-    println!("✓ Merchant fee set to {fee_bps} bps ({fee_pct:.1}%)");
-
-    Ok(fee_bps)
 }

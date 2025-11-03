@@ -1,6 +1,7 @@
 //! Output formatting utilities for the Tally CLI
 
 use crate::config::TallyCliConfig;
+use crate::utils::colors::{terminal_width, truncate_to_width, Theme};
 use anyhow::{anyhow, Result};
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,37 +38,88 @@ pub fn format_plans_human(plans: &[PlanInfo], merchant_pda: &Pubkey) -> String {
     use std::fmt::Write;
 
     if plans.is_empty() {
-        return format!("No plans found for merchant: {merchant_pda}");
+        return format!(
+            "{} {}",
+            Theme::warning("No plans found for merchant:"),
+            Theme::dim(&merchant_pda.to_string())
+        );
     }
 
-    let mut output = format!("Plans for merchant: {merchant_pda}\n\n");
-
-    // Use write! to avoid extra allocations
+    let mut output = String::new();
     writeln!(
         &mut output,
-        "{:<15} {:<20} {:<12} {:<15} {:<10} {:<8} {:<44}",
-        "Plan ID", "Name", "Price (USDC)", "Period", "Grace (s)", "Active", "Address"
+        "{} {}\n",
+        Theme::header("Plans for merchant:"),
+        Theme::highlight(&merchant_pda.to_string())
     )
     .unwrap();
-    output.push_str(&"-".repeat(140));
+
+    // Get terminal width for responsive layout
+    let term_width = terminal_width();
+    let available_width = term_width.saturating_sub(10);
+
+    // Adjust column widths based on terminal size
+    let (id_width, name_width, addr_width) = if available_width < 120 {
+        // Narrow terminal - truncate columns
+        (12, 15, 20)
+    } else {
+        // Wide terminal - full widths
+        (15, 20, 44)
+    };
+
+    // Header with colors
+    writeln!(
+        &mut output,
+        "{:<id_width$} {:<name_width$} {:<12} {:<15} {:<10} {:<8} {:<addr_width$}",
+        Theme::header("Plan ID"),
+        Theme::header("Name"),
+        Theme::header("Price (USDC)"),
+        Theme::header("Period"),
+        Theme::header("Grace (s)"),
+        Theme::header("Active"),
+        Theme::header("Address"),
+        id_width = id_width,
+        name_width = name_width,
+        addr_width = addr_width
+    )
+    .unwrap();
+    output.push_str(&Theme::dim(&"-".repeat(available_width.min(140))).to_string());
     output.push('\n');
 
+    // Data rows
     for plan in plans {
+        let id_truncated = truncate_to_width(&plan.plan_id, id_width);
+        let name_truncated = truncate_to_width(&plan.name, name_width);
+        let addr_truncated = truncate_to_width(&plan.address.to_string(), addr_width);
+        let active_text = if plan.active {
+            Theme::active("Yes").to_string()
+        } else {
+            Theme::inactive("No").to_string()
+        };
+
         writeln!(
             &mut output,
-            "{:<15} {:<20} {:<12.6} {:<15} {:<10} {:<8} {}",
-            plan.plan_id,
-            plan.name,
+            "{:<id_width$} {:<name_width$} {:<12.6} {:<15} {:<10} {:<8} {}",
+            id_truncated,
+            name_truncated,
             plan.price_usdc,
             plan.period,
             plan.grace_secs,
-            if plan.active { "Yes" } else { "No" },
-            plan.address
+            active_text,
+            Theme::dim(&addr_truncated),
+            id_width = id_width,
+            name_width = name_width
         )
         .unwrap();
     }
 
-    write!(&mut output, "\nTotal plans: {}", plans.len()).unwrap();
+    write!(
+        &mut output,
+        "\n{} {}",
+        Theme::info("Total plans:"),
+        Theme::value(&plans.len().to_string())
+    )
+    .unwrap();
     output
 }
 
@@ -106,43 +158,87 @@ pub fn format_subscriptions_human(
     use std::fmt::Write;
 
     if subscriptions.is_empty() {
-        return format!("No subscriptions found for plan: {plan_pda}");
+        return format!(
+            "{} {}",
+            Theme::warning("No subscriptions found for plan:"),
+            Theme::dim(&plan_pda.to_string())
+        );
     }
 
-    let mut output = format!("Subscriptions for plan: {plan_pda}\n\n");
+    let mut output = String::new();
     writeln!(
         &mut output,
-        "{:<44} {:<8} {:<9} {:<20} {:<20} {:<12} {:<44}",
-        "Subscriber", "Status", "Renewals", "Next Renewal", "Created", "Last Amount", "Address"
+        "{} {}\n",
+        Theme::header("Subscriptions for plan:"),
+        Theme::highlight(&plan_pda.to_string())
     )
     .unwrap();
-    output.push_str(&"-".repeat(175));
+
+    // Get terminal width for responsive layout
+    let term_width = terminal_width();
+    let available_width = term_width.saturating_sub(10);
+
+    // Adjust column widths based on terminal size
+    let (subscriber_width, addr_width) = if available_width < 120 {
+        // Narrow terminal - truncate columns
+        (20, 20)
+    } else {
+        // Wide terminal - full widths
+        (44, 44)
+    };
+
+    // Header with colors
+    writeln!(
+        &mut output,
+        "{:<subscriber_width$} {:<8} {:<9} {:<20} {:<20} {:<12} {:<addr_width$}",
+        Theme::header("Subscriber"),
+        Theme::header("Status"),
+        Theme::header("Renewals"),
+        Theme::header("Next Renewal"),
+        Theme::header("Created"),
+        Theme::header("Last Amount"),
+        Theme::header("Address"),
+        subscriber_width = subscriber_width,
+        addr_width = addr_width
+    )
+    .unwrap();
+    output.push_str(&Theme::dim(&"-".repeat(available_width.min(175))).to_string());
     output.push('\n');
 
+    // Data rows
     for sub in subscriptions {
         let next_renewal = format_timestamp(sub.next_renewal_ts);
         let created = format_timestamp(sub.created_ts);
-        // Use config for USDC conversion - format as float for better display
         let last_amount_usdc = config.format_usdc(sub.last_amount);
+
+        let subscriber_truncated = truncate_to_width(&sub.subscriber.to_string(), subscriber_width);
+        let addr_truncated = truncate_to_width(&sub.address.to_string(), addr_width);
+        let status_text = if sub.active {
+            Theme::active("Active").to_string()
+        } else {
+            Theme::inactive("Inactive").to_string()
+        };
 
         writeln!(
             &mut output,
-            "{:<44} {:<8} {:<9} {:<20} {:<20} {:<12.6} {}",
-            sub.subscriber,
-            if sub.active { "Active" } else { "Inactive" },
+            "{:<subscriber_width$} {:<8} {:<9} {:<20} {:<20} {:<12.6} {}",
+            subscriber_truncated,
+            status_text,
             sub.renewals,
             next_renewal,
             created,
             last_amount_usdc,
-            sub.address
+            Theme::dim(&addr_truncated),
+            subscriber_width = subscriber_width
         )
         .unwrap();
     }
 
     write!(
         &mut output,
-        "\nTotal subscriptions: {}",
-        subscriptions.len()
+        "\n{} {}",
+        Theme::info("Total subscriptions:"),
+        Theme::value(&subscriptions.len().to_string())
     )
     .unwrap();
     output

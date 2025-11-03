@@ -40,6 +40,10 @@ struct Cli {
     #[arg(long, global = true)]
     usdc_mint: Option<String>,
 
+    /// Disable color output (respects `NO_COLOR` environment variable)
+    #[arg(long, global = true)]
+    no_color: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -201,21 +205,21 @@ enum MerchantCommands {
     /// Initialize a new merchant account
     #[command(long_about = "Initialize a new merchant account on the Tally protocol.\n\n\
                              This creates your merchant PDA (Program Derived Address) which will\n\
-                             be used to manage subscription plans. The merchant account stores your\n\
-                             treasury ATA (where payments are deposited) and your fee percentage.\n\n\
+                             be used to manage subscription plans. New merchants are automatically\n\
+                             assigned to the Free tier with a 2.0% platform fee.\n\n\
                              Prerequisites:\n  \
                              • SOL for transaction fees (~0.01 SOL)\n  \
                              • USDC treasury ATA (will be auto-created if it doesn't exist)\n\n\
                              Arguments:\n  \
-                             --treasury: USDC Associated Token Account for receiving payments\n  \
-                             --fee-bps: Your merchant fee in basis points (50 = 0.5%, 100 = 1%)\n\n\
+                             --treasury: USDC Associated Token Account for receiving payments\n\n\
                              Examples:\n  \
-                             # Initialize with 0.5% merchant fee\n  \
+                             # Initialize merchant account\n  \
                              tally-merchant merchant init \\\n    \
-                             --treasury <USDC_ATA> \\\n    \
-                             --fee-bps 50\n\n\
+                             --treasury <USDC_ATA>\n\n\
                              Note: For first-time setup, use 'tally-merchant init' instead,\n\
-                             which provides an interactive wizard.")]
+                             which provides an interactive wizard.\n\n\
+                             Your merchant starts on the Free tier (2.0% platform fee).\n\
+                             Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers.")]
     Init {
         /// Authority keypair for the merchant
         #[arg(long)]
@@ -224,10 +228,6 @@ enum MerchantCommands {
         /// USDC treasury account for the merchant (ATA will be created if needed)
         #[arg(long, help = "USDC Associated Token Account for receiving subscription payments")]
         treasury: String,
-
-        /// Fee basis points (e.g., 50 = 0.5%, 100 = 1%)
-        #[arg(long, help = "Merchant fee in basis points (50 = 0.5%, 100 = 1%, max 1000 = 10%)")]
-        fee_bps: u16,
     },
 
     /// Show merchant account details
@@ -415,6 +415,10 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let cli = Cli::parse();
+
+    // Initialize colors based on --no-color flag and NO_COLOR env var
+    utils::colors::init_colors(cli.no_color);
+
     let config = TallyCliConfig::new();
 
     // Load config file (if it exists) for additional defaults
@@ -490,7 +494,10 @@ async fn main() -> Result<()> {
     // Handle output formatting
     match result {
         Ok(output) => match output_format {
-            OutputFormat::Human => println!("{output}"),
+            OutputFormat::Human => {
+                // Output is already formatted by commands, just print it
+                println!("{output}");
+            }
             OutputFormat::Json => {
                 let json_output = serde_json::json!({
                     "success": true,
@@ -501,7 +508,9 @@ async fn main() -> Result<()> {
         },
         Err(e) => {
             match output_format {
-                OutputFormat::Human => eprintln!("Error: {e}"),
+                OutputFormat::Human => {
+                    eprintln!("{}: {e}", utils::colors::Theme::error("Error"));
+                }
                 OutputFormat::Json => {
                     let json_output = serde_json::json!({
                         "success": false,
@@ -624,13 +633,11 @@ async fn execute_merchant_commands(
         MerchantCommands::Init {
             authority,
             treasury,
-            fee_bps,
         } => {
             commands::execute_init_merchant(
                 tally_client,
                 authority.as_deref(),
                 treasury,
-                *fee_bps,
                 cli.usdc_mint.as_deref(),
                 config,
             )
