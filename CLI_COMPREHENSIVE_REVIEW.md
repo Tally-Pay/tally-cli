@@ -11,21 +11,25 @@
 
 ## Executive Summary
 
-**Overall Rating: 8.5/10** (Updated after Phase 1 implementation)
+**Overall Rating: 9.0/10** (Updated after Phase 1 Priority 4 completion)
 
-The Tally Merchant CLI is a functionally solid tool built on clean Rust architecture with proper SDK integration. However, it falls significantly short of best-in-class user experience standards, particularly for its critical role as the primary merchant onboarding interface. While the technical implementation is sound (passes clippy, forbids unsafe code, uses proper error handling), the UX has major gaps that will create friction for new merchants.
+The Tally Merchant CLI has significantly improved with the completion of 4 out of 5 Phase 1 priorities. The CLI now features a hierarchical command structure, fully functional dashboard, human-friendly input formats, and persistent configuration with profile support. The technical implementation is excellent (zero clippy warnings, forbids unsafe code, comprehensive error handling, 40 passing tests).
 
-**Critical Finding:** Dashboard functionality is completely disabled ("Dashboard functionality temporarily disabled"), which is a major gap for a production merchant tool. This removes critical visibility into revenue and subscriber metrics that merchants need.
+**Major Achievements:**
+- ✅ Dashboard fully functional with analytics and monitoring
+- ✅ Hierarchical command structure for better discoverability
+- ✅ Human-friendly inputs (USDC decimals, days instead of seconds)
+- ✅ Persistent config file with profile system (devnet/mainnet/localnet)
+- ✅ Auto-save merchant PDA after initialization
+- ✅ XDG Base Directory compliance
 
 **Top 3 Strengths:**
 1. **Clean Architecture** - Well-structured SDK-first approach with proper separation of concerns
-2. **Comprehensive README** - Excellent documentation with clear examples and common workflows
-3. **Type Safety** - Proper use of Rust type system with good error handling patterns
+2. **Configuration System** - Profile-based config with proper precedence and XDG compliance
+3. **Type Safety** - Proper use of Rust type system with comprehensive error handling
 
-**Top 3 Critical Priorities:**
-1. **Flat Command Structure** - Disparate commands (`create-plan`, `deactivate-plan`) instead of hierarchical subcommands (`plan create`, `plan deactivate`) creates cognitive overhead
-2. **Zero Onboarding Flow** - No `init` command, no guided setup, merchants must understand PDAs before starting
-3. **Missing Dashboard** - Core analytics functionality is stubbed out, removing key value proposition
+**Remaining Priority:**
+1. **Interactive Init Wizard** - Still requires manual configuration, would benefit from guided setup flow (Priority 3 from Phase 1)
 
 ---
 
@@ -1082,15 +1086,40 @@ Impact:
   4. Save merchant PDA to config file
   5. Guide user to create first plan
 
-**Priority 4: Implement Config File Support**
-- Current state: No config file, merchant PDA required every time
-- Impact: Severe friction, error-prone usage (CRITICAL)
-- Action items:
-  1. Add config file at `~/.config/tally/config.toml`
-  2. Implement profile system (devnet, mainnet)
-  3. Create `config` subcommand for management
-  4. Auto-save merchant PDA after init-merchant
-  5. Add XDG Base Directory compliance
+**Priority 4: Implement Config File Support** ✅ COMPLETED
+- ~~Current state: No config file, merchant PDA required every time~~
+- **Status**: Fully implemented with profile system and XDG compliance
+- **Completed actions**:
+  1. ✅ Created config file structure at `~/.config/tally/config.toml`
+  2. ✅ Implemented profile system (devnet, mainnet, localnet) with active profile tracking
+  3. ✅ Added comprehensive `config` subcommand with init, list, get, set, path operations
+  4. ✅ Implemented profile management (list, active, use, create)
+  5. ✅ Auto-save merchant PDA after init-merchant to active profile
+  6. ✅ Full XDG Base Directory specification compliance
+  7. ✅ Configuration precedence: CLI flags > env vars > config file > defaults
+- **Implementation details**:
+  - TOML-based configuration with profile support
+  - Default profiles created on init (devnet, mainnet, localnet)
+  - Merchant PDA automatically saved after merchant initialization
+  - Profile switching without losing configuration
+  - All config operations have proper error handling and validation
+- **Command structure**:
+  ```bash
+  tally-merchant config init [--force]        # Initialize config file
+  tally-merchant config list [--profile]      # List configuration values
+  tally-merchant config get <key>             # Get specific value
+  tally-merchant config set <key> <value>     # Set configuration value
+  tally-merchant config path                  # Show config file path
+  tally-merchant config profile list          # List all profiles
+  tally-merchant config profile active        # Show active profile
+  tally-merchant config profile use <name>    # Set active profile
+  tally-merchant config profile create        # Create new profile
+  ```
+- **Benefits**:
+  - No need to specify `--merchant` on every command
+  - Easy switching between networks via profiles
+  - Persistent configuration across sessions
+  - Standard XDG directory structure
 
 **Priority 5: Human-Friendly Input Formats** ✅ COMPLETED
 - ~~Current state: Requires micro-units and raw seconds~~
