@@ -2,6 +2,7 @@
 
 use crate::config::TallyCliConfig;
 use crate::utils::colors::Theme;
+use crate::utils::progress;
 use anyhow::{anyhow, Context, Result};
 use std::fmt::Write as _;
 use std::str::FromStr;
@@ -88,12 +89,23 @@ pub async fn execute(
         grace_secs: grace_secs_u64,
     };
 
-    // Use tally-sdk's high-level convenience method
-    let (plan_pda, signature) = tally_client
+    // Use tally-sdk's high-level convenience method with progress indicator
+    let spinner = progress::create_spinner("Creating plan and submitting transaction...");
+    let result = tally_client
         .create_plan(&authority, plan_args)
-        .map_err(|e| anyhow!("Failed to create plan: {e}"))?;
+        .map_err(|e| anyhow!("Failed to create plan: {e}"));
 
-    info!("Transaction confirmed: {}", signature);
+    match &result {
+        Ok((_, signature)) => {
+            progress::finish_progress_success(&spinner, "Plan created successfully");
+            info!("Transaction confirmed: {}", signature);
+        }
+        Err(_) => {
+            progress::finish_progress_error(&spinner, "Failed to create plan");
+        }
+    }
+
+    let (plan_pda, signature) = result?;
 
     // Return success message with plan details
     let price_usdc_display = config.format_usdc(request.price_usdc);

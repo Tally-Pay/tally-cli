@@ -4,3 +4,4 @@
 
 pub mod colors;
 pub mod formatting;
+pub mod progress;

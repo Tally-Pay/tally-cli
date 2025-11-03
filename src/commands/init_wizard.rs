@@ -8,6 +8,7 @@
 //! - Optional first plan creation
 
 use crate::config::TallyCliConfig;
+use crate::utils::progress;
 use anyhow::{anyhow, Context, Result};
 use dialoguer::{Confirm, Input, Select};
 use std::str::FromStr;
@@ -73,16 +74,25 @@ pub async fn execute(
     let treasury_ata = prompt_treasury_setup(tally_client, &wallet)?;
 
     // Step 4: Initialize merchant
-    println!("\n⏳ Initializing merchant account...");
+    println!("\nInitializing merchant account...");
     println!("   • Your merchant will be created on the Free tier (2.0% platform fee)");
-    println!("   • Contact platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%)");
+    println!("   • Contact platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%)\n");
 
     let usdc_mint = get_usdc_mint(None)?;
-    let (merchant_pda, signature, created_ata) = tally_client
-        .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata)
-        .context("Failed to initialize merchant")?;
 
-    println!("✅ Merchant account created!\n");
+    // Use progress spinner for transaction
+    let spinner = progress::create_spinner("Submitting merchant initialization transaction...");
+    let result = tally_client
+        .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata)
+        .context("Failed to initialize merchant");
+
+    match &result {
+        Ok(_) => progress::finish_progress_success(&spinner, "Merchant account created"),
+        Err(_) => progress::finish_progress_error(&spinner, "Failed to create merchant account"),
+    }
+
+    let (merchant_pda, signature, created_ata) = result?;
+    println!();
 
     // Step 5: Display results
     let ata_message = if created_ata {
