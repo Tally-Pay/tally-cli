@@ -173,6 +173,21 @@ enum Commands {
         plan: String,
     },
 
+    /// Cancel an active subscription
+    CancelSubscription {
+        /// Subscription account address
+        #[arg(long)]
+        subscription: String,
+
+        /// Subscriber public key
+        #[arg(long)]
+        subscriber: String,
+
+        /// Subscriber keypair (defaults to ~/.config/solana/id.json)
+        #[arg(long)]
+        subscriber_keypair: Option<String>,
+    },
+
     /// Close a canceled subscription and reclaim rent
     CloseSubscription {
         /// Subscription account address
@@ -496,6 +511,24 @@ async fn execute_command(
             // Use default output format for now - this will be refactored with other commands
             let output_format = commands::list_subs::OutputFormat::Human;
             commands::execute_list_subs(tally_client, plan, &output_format, config).await
+        }
+
+        Commands::CancelSubscription {
+            subscription,
+            subscriber,
+            subscriber_keypair,
+        } => {
+            let request = commands::cancel_subscription::CancelSubscriptionRequest {
+                subscription,
+                subscriber,
+            };
+            commands::execute_cancel_subscription(
+                tally_client,
+                &request,
+                subscriber_keypair.as_deref(),
+                config,
+            )
+            .await
         }
 
         Commands::CloseSubscription {
