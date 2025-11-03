@@ -53,6 +53,15 @@ enum OutputFormat {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Interactive setup wizard for first-time merchants
+    #[command(long_about = "Launch an interactive wizard to set up your merchant account.\n\n\
+                             This guided setup will:\n\
+                             • Check your wallet and SOL balance\n\
+                             • Help you configure a USDC treasury\n\
+                             • Set your merchant fee\n\
+                             • Create your merchant account\n\
+                             • Optionally guide you to create your first plan\n\n\
+                             Example:\n  \
+                             tally-merchant init")]
     Init {
         /// Skip the optional plan creation step
         #[arg(long)]
@@ -87,6 +96,18 @@ enum Commands {
     Dashboard {
         #[command(subcommand)]
         command: DashboardCommands,
+    },
+
+    /// Generate shell completions for your shell
+    #[command(long_about = "Generate shell completion scripts for bash, zsh, fish, or PowerShell.\n\n\
+                             Examples:\n  \
+                             tally-merchant completions bash > /usr/local/share/bash-completion/completions/tally-merchant\n  \
+                             tally-merchant completions zsh > ~/.zsh/completion/_tally-merchant\n  \
+                             tally-merchant completions fish > ~/.config/fish/completions/tally-merchant.fish")]
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -178,17 +199,34 @@ enum ProfileCommands {
 #[derive(Subcommand, Debug)]
 enum MerchantCommands {
     /// Initialize a new merchant account
+    #[command(long_about = "Initialize a new merchant account on the Tally protocol.\n\n\
+                             This creates your merchant PDA (Program Derived Address) which will\n\
+                             be used to manage subscription plans. The merchant account stores your\n\
+                             treasury ATA (where payments are deposited) and your fee percentage.\n\n\
+                             Prerequisites:\n  \
+                             • SOL for transaction fees (~0.01 SOL)\n  \
+                             • USDC treasury ATA (will be auto-created if it doesn't exist)\n\n\
+                             Arguments:\n  \
+                             --treasury: USDC Associated Token Account for receiving payments\n  \
+                             --fee-bps: Your merchant fee in basis points (50 = 0.5%, 100 = 1%)\n\n\
+                             Examples:\n  \
+                             # Initialize with 0.5% merchant fee\n  \
+                             tally-merchant merchant init \\\n    \
+                             --treasury <USDC_ATA> \\\n    \
+                             --fee-bps 50\n\n\
+                             Note: For first-time setup, use 'tally-merchant init' instead,\n\
+                             which provides an interactive wizard.")]
     Init {
         /// Authority keypair for the merchant
         #[arg(long)]
         authority: Option<String>,
 
-        /// USDC treasury account for the merchant
-        #[arg(long)]
+        /// USDC treasury account for the merchant (ATA will be created if needed)
+        #[arg(long, help = "USDC Associated Token Account for receiving subscription payments")]
         treasury: String,
 
-        /// Fee basis points (e.g., 50 = 0.5%)
-        #[arg(long)]
+        /// Fee basis points (e.g., 50 = 0.5%, 100 = 1%)
+        #[arg(long, help = "Merchant fee in basis points (50 = 0.5%, 100 = 1%, max 1000 = 10%)")]
         fee_bps: u16,
     },
 
@@ -203,33 +241,58 @@ enum MerchantCommands {
 #[derive(Subcommand, Debug)]
 enum PlanCommands {
     /// Create a new subscription plan
+    #[command(long_about = "Create a new subscription plan for your merchant.\n\n\
+                             A subscription plan defines the price, billing period, and grace period\n\
+                             for recurring USDC payments. Once created, users can subscribe to the plan\n\
+                             via Solana Actions (Blinks).\n\n\
+                             Arguments:\n  \
+                             --price-usdc: Price in USDC (e.g., 10.0 for $10/month)\n  \
+                             --period-days: Billing period in days (e.g., 30 for monthly)\n  \
+                             --period-months: Alternative to period-days (e.g., 1 for monthly)\n  \
+                             --grace-days: Days after missed payment before cancellation (default: 1)\n\n\
+                             Examples:\n  \
+                             # Create a $10/month premium plan\n  \
+                             tally-merchant plan create \\\n    \
+                             --merchant <MERCHANT_PDA> \\\n    \
+                             --id premium \\\n    \
+                             --name \"Premium Plan\" \\\n    \
+                             --price-usdc 10.0 \\\n    \
+                             --period-months 1\n\n  \
+                             # Create a $50/quarter business plan with 3-day grace\n  \
+                             tally-merchant plan create \\\n    \
+                             --merchant <MERCHANT_PDA> \\\n    \
+                             --id business \\\n    \
+                             --name \"Business Plan\" \\\n    \
+                             --price-usdc 50.0 \\\n    \
+                             --period-days 90 \\\n    \
+                             --grace-days 3")]
     Create {
         /// Merchant account address
         #[arg(long)]
         merchant: String,
 
-        /// Plan identifier
-        #[arg(long)]
+        /// Plan identifier (used in plan PDA)
+        #[arg(long, help = "Unique identifier for this plan (e.g., 'premium', 'basic')")]
         id: String,
 
         /// Plan display name
-        #[arg(long)]
+        #[arg(long, help = "Human-readable name shown to subscribers")]
         name: String,
 
         /// Price in USDC (e.g., 10.0 for $10 USDC)
-        #[arg(long = "price-usdc")]
+        #[arg(long = "price-usdc", help = "Subscription price in USDC (e.g., 10.0 for $10/period)")]
         price_usdc: f64,
 
         /// Billing period in days (e.g., 30 for monthly)
-        #[arg(long = "period-days", conflicts_with = "period_months")]
+        #[arg(long = "period-days", conflicts_with = "period_months", help = "Billing period in days (e.g., 30 for monthly, 365 for yearly)")]
         period_days: Option<u32>,
 
         /// Billing period in months (convenient shortcut)
-        #[arg(long = "period-months", conflicts_with = "period_days")]
+        #[arg(long = "period-months", conflicts_with = "period_days", help = "Billing period in months (e.g., 1 for monthly, 12 for yearly)")]
         period_months: Option<u32>,
 
         /// Grace period in days (defaults to 1 day if not specified)
-        #[arg(long = "grace-days", default_value = "1")]
+        #[arg(long = "grace-days", default_value = "1", help = "Days after missed payment before subscription is canceled (default: 1)")]
         grace_days: u32,
 
         /// Authority keypair for the merchant
@@ -464,6 +527,7 @@ fn command_needs_sdk(command: &Commands) -> bool {
         | Commands::Plan { .. }
         | Commands::Subscription { .. }
         | Commands::Dashboard { .. } => true,
+        Commands::Completions { .. } => false,
     }
 }
 
@@ -748,6 +812,17 @@ fn execute_dashboard_commands(
     commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
 }
 
+/// Generate shell completions for the specified shell
+fn generate_completions(shell: clap_complete::Shell) {
+    use clap::CommandFactory;
+    use clap_complete::generate;
+    use std::io;
+
+    let mut cmd = Cli::command();
+    let bin_name = cmd.get_name().to_string();
+    generate(shell, &mut cmd, bin_name, &mut io::stdout());
+}
+
 /// Main command router
 async fn execute_command(
     cli: &Cli,
@@ -777,6 +852,10 @@ async fn execute_command(
         Commands::Dashboard { command } => {
             let client = require_client(tally_client)?;
             execute_dashboard_commands(cli, client, config, command)
+        }
+        Commands::Completions { shell } => {
+            generate_completions(*shell);
+            Ok(String::new())
         }
     }
 }
