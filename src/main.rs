@@ -370,7 +370,6 @@ async fn execute_command(
                 rpc_url,
                 config,
             )
-            .await
         }
 
         Commands::ShowMerchant { merchant } => {
