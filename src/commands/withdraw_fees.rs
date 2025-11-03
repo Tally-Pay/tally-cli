@@ -73,15 +73,18 @@ pub async fn execute(
     .map_err(|e| anyhow!("Failed to compute platform treasury ATA: {e}"))?;
     info!("Using platform treasury ATA: {}", platform_treasury_ata);
 
-    // Use tally-sdk's high-level convenience method
+    // Build and submit admin withdraw fees instruction using transaction builder
+    let instruction = tally_sdk::transaction_builder::admin_withdraw_fees()
+        .platform_authority(platform_authority.pubkey())
+        .platform_treasury_ata(platform_treasury_ata)
+        .destination_ata(destination_ata)
+        .usdc_mint(usdc_mint)
+        .amount(amount)
+        .build_instruction()
+        .map_err(|e| anyhow!("Failed to build admin withdraw fees instruction: {e}"))?;
+
     let signature = tally_client
-        .withdraw_platform_fees(
-            &platform_authority,
-            &platform_treasury_ata,
-            &destination_ata,
-            &usdc_mint,
-            amount,
-        )
+        .submit_instruction(instruction, &[&platform_authority])
         .map_err(|e| anyhow!("Failed to withdraw platform fees: {e}"))?;
 
     info!("Transaction confirmed: {}", signature);
