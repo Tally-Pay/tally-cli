@@ -550,9 +550,9 @@ pub fn format_output<T: JsonSerializable + std::fmt::Display>(
 
 | Task | Priority | Effort | Assignee | Status |
 |------|----------|--------|----------|--------|
-| Implement `start-subscription` | 🟡 Medium | 4-6h | - | ⬜ Pending |
-| Implement `cancel-subscription` | 🟡 Medium | 3-4h | - | ⬜ Pending |
-| Implement `renew-subscription` | 🟡 Medium | 3-4h | - | ⬜ Pending |
+| Implement `start-subscription` | 🟡 Medium | 4-6h | - | ✅ Complete |
+| Implement `cancel-subscription` | 🟡 Medium | 3-4h | - | ✅ Complete |
+| Implement `renew-subscription` | 🟡 Medium | 3-4h | - | ✅ Complete |
 | Implement inspection commands | 🟡 Medium | 6-9h | - | ⬜ Pending |
 | Improve error context | 🟡 Medium | 2-3h | - | ⬜ Pending |
 
