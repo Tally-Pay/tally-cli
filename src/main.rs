@@ -326,6 +326,13 @@ enum Commands {
 
     /// Show global configuration details
     ShowConfig,
+
+    /// Show subscription account details
+    ShowSubscription {
+        /// Subscription account address
+        #[arg(long)]
+        subscription: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -741,6 +748,18 @@ async fn execute_command(
                 output_format,
             };
             commands::execute_show_config(tally_client, &request, config).await
+        }
+
+        Commands::ShowSubscription { subscription } => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_subscription::ShowSubscriptionRequest {
+                subscription,
+                output_format,
+            };
+            commands::execute_show_subscription(tally_client, &request, config).await
         }
     }
 }
