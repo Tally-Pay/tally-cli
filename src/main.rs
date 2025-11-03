@@ -128,17 +128,21 @@ enum PlanCommands {
         #[arg(long)]
         name: String,
 
-        /// Price in USDC micro-units (6 decimals)
-        #[arg(long)]
-        price: u64,
+        /// Price in USDC (e.g., 10.0 for $10 USDC)
+        #[arg(long = "price-usdc")]
+        price_usdc: f64,
 
-        /// Billing period in seconds
-        #[arg(long)]
-        period: i64,
+        /// Billing period in days (e.g., 30 for monthly)
+        #[arg(long = "period-days", conflicts_with = "period_months")]
+        period_days: Option<u32>,
 
-        /// Grace period in seconds
-        #[arg(long)]
-        grace: i64,
+        /// Billing period in months (convenient shortcut)
+        #[arg(long = "period-months", conflicts_with = "period_days")]
+        period_months: Option<u32>,
+
+        /// Grace period in days (defaults to 1 day if not specified)
+        #[arg(long = "grace-days", default_value = "1")]
+        grace_days: u32,
 
         /// Authority keypair for the merchant
         #[arg(long)]
@@ -158,17 +162,21 @@ enum PlanCommands {
         #[arg(long)]
         plan: String,
 
-        /// New price in USDC micro-units (optional)
-        #[arg(long)]
-        price: Option<u64>,
+        /// New price in USDC (e.g., 15.0 for $15 USDC)
+        #[arg(long = "price-usdc")]
+        price_usdc: Option<f64>,
 
-        /// New billing period in seconds (optional)
-        #[arg(long)]
-        period: Option<i64>,
+        /// New billing period in days
+        #[arg(long = "period-days", conflicts_with = "period_months")]
+        period_days: Option<u32>,
 
-        /// New grace period in seconds (optional)
-        #[arg(long)]
-        grace_period: Option<i64>,
+        /// New billing period in months (convenient shortcut)
+        #[arg(long = "period-months", conflicts_with = "period_days")]
+        period_months: Option<u32>,
+
+        /// New grace period in days
+        #[arg(long = "grace-days")]
+        grace_days: Option<u32>,
 
         /// Authority keypair for the merchant
         #[arg(long)]
@@ -304,6 +312,22 @@ fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
     }
 }
 
+/// Convert USDC decimal to micro-units with validation
+fn usdc_to_micro_units(usdc: f64) -> Result<u64> {
+    if usdc < 0.0 {
+        return Err(anyhow::anyhow!("Price must be greater than or equal to 0"));
+    }
+    if usdc > 1_000_000.0 {
+        return Err(anyhow::anyhow!(
+            "Price seems too high: ${usdc}. Did you mean ${:.2}?",
+            usdc / 1_000_000.0
+        ));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let micro_units = (usdc * 1_000_000.0) as u64;
+    Ok(micro_units)
+}
+
 #[allow(clippy::cognitive_complexity)]
 async fn execute_command(
     cli: &Cli,
@@ -357,18 +381,40 @@ async fn execute_command(
                 merchant,
                 id,
                 name,
-                price,
-                period,
-                grace,
+                price_usdc,
+                period_days,
+                period_months,
+                grace_days,
                 authority,
             } => {
+                // Convert USDC to micro-units (6 decimals) with validation
+                let price_micro = usdc_to_micro_units(*price_usdc)?;
+
+                // Convert period to seconds (prefer days, allow months as alternative)
+                let period_secs = period_months.map_or_else(
+                    || {
+                        period_days.map_or_else(
+                            || {
+                                Err(anyhow::anyhow!(
+                                    "Either --period-days or --period-months is required"
+                                ))
+                            },
+                            |days| Ok(i64::from(days) * 86400),
+                        )
+                    },
+                    |months| Ok(i64::from(months) * 30 * 86400),
+                )?;
+
+                // Convert grace period to seconds
+                let grace_secs = i64::from(*grace_days) * 86400;
+
                 let request = commands::create_plan::CreatePlanRequest {
                     merchant_str: merchant,
                     plan_id: id,
                     plan_name: name,
-                    price_usdc: *price,
-                    period_secs: *period,
-                    grace_secs: *grace,
+                    price_usdc: price_micro,
+                    period_secs,
+                    grace_secs,
                     authority_path: authority.as_deref(),
                 };
                 commands::execute_create_plan(tally_client, &request, config).await
@@ -384,16 +430,33 @@ async fn execute_command(
 
             PlanCommands::Update {
                 plan,
-                price,
-                period,
-                grace_period,
+                price_usdc,
+                period_days,
+                period_months,
+                grace_days,
                 authority,
             } => {
+                // Convert USDC to micro-units if provided
+                let new_price = if let Some(p) = price_usdc {
+                    Some(usdc_to_micro_units(*p)?)
+                } else {
+                    None
+                };
+
+                // Convert period to seconds if provided (prefer days, allow months)
+                let new_period_seconds = period_months.map_or_else(
+                    || period_days.map(|d| i64::from(d) * 86400),
+                    |months| Some(i64::from(months) * 30 * 86400),
+                );
+
+                // Convert grace period to seconds if provided
+                let new_grace_period_seconds = grace_days.map(|d| i64::from(d) * 86400);
+
                 let request = commands::update_plan_terms::UpdatePlanTermsRequest {
                     plan,
-                    new_price: *price,
-                    new_period_seconds: *period,
-                    new_grace_period_seconds: *grace_period,
+                    new_price,
+                    new_period_seconds,
+                    new_grace_period_seconds,
                 };
                 commands::execute_update_plan_terms(
                     tally_client,

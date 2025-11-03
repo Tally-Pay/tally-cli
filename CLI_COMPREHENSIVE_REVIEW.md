@@ -1092,16 +1092,36 @@ Impact:
   4. Auto-save merchant PDA after init-merchant
   5. Add XDG Base Directory compliance
 
-**Priority 5: Human-Friendly Input Formats**
-- Current state: Requires micro-units and raw seconds
-- Impact: Confusing, error-prone (HIGH)
-- Note: No existing users, can use human-friendly formats as the default
-- Action items:
-  1. Replace `--price` with `--price-usdc` flag that accepts decimal USDC
-  2. Replace `--period` with `--period-days` flag that accepts days
-  3. Replace `--grace` with `--grace-days` flag that accepts days
-  4. Add `--period-months` as convenient shortcut
-  5. Update help text with examples
+**Priority 5: Human-Friendly Input Formats** ✅ COMPLETED
+- ~~Current state: Requires micro-units and raw seconds~~
+- **Status**: Fully implemented with human-friendly defaults
+- **Completed actions**:
+  1. ✅ Replaced `--price` with `--price-usdc` accepting decimal USDC (e.g., 10.0 for $10)
+  2. ✅ Replaced `--period` with `--period-days` accepting days (e.g., 30 for monthly)
+  3. ✅ Replaced `--grace` with `--grace-days` accepting days (default: 1 day)
+  4. ✅ Added `--period-months` as convenient shortcut (e.g., 1 for monthly)
+  5. ✅ Updated help text with clear examples and descriptions
+- **Implementation details**:
+  - Automatic conversion from human units to protocol micro-units/seconds
+  - Input validation prevents common errors (negative prices, excessive values)
+  - Clear error messages with suggestions
+  - Conflicts between `--period-days` and `--period-months` properly handled
+- **Examples**:
+  ```bash
+  # Old (confusing):
+  --price 10000000 --period 2592000 --grace 86400
+
+  # New (clear):
+  --price-usdc 10.0 --period-days 30 --grace-days 1
+
+  # Or use months:
+  --price-usdc 10.0 --period-months 1
+  ```
+- **Benefits**:
+  - No mental math required
+  - Less error-prone
+  - Self-documenting commands
+  - Helpful defaults (grace-days defaults to 1)
 
 ### Phase 2: Important Improvements - SHOULD DO
 
