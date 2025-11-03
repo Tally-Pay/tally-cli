@@ -2,6 +2,7 @@
 
 use crate::config::TallyCliConfig;
 use crate::config_file::ConfigFile;
+use crate::errors::enhance_merchant_init_error;
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
@@ -41,7 +42,7 @@ pub async fn execute(
     // Platform fee is automatically set to Free tier (2.0%) by the program
     let (merchant_pda, signature, created_ata) = tally_client
         .initialize_merchant_with_treasury(&authority, &usdc_mint, &treasury_ata)
-        .map_err(|e| anyhow!("Failed to initialize merchant: {e}"))?;
+        .map_err(|e| enhance_merchant_init_error(&e, &authority.pubkey(), &treasury_ata))?;
 
     info!(
         "Transaction confirmed: {}, created_ata: {}",

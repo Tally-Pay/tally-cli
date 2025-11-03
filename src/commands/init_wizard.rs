@@ -8,6 +8,7 @@
 //! - Optional first plan creation
 
 use crate::config::TallyCliConfig;
+use crate::errors::enhance_merchant_init_error;
 use crate::utils::progress;
 use anyhow::{anyhow, Context, Result};
 use dialoguer::{Confirm, Input, Select};
@@ -84,7 +85,7 @@ pub async fn execute(
     let spinner = progress::create_spinner("Submitting merchant initialization transaction...");
     let result = tally_client
         .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata)
-        .context("Failed to initialize merchant");
+        .map_err(|e| enhance_merchant_init_error(&e, &wallet.pubkey(), &treasury_ata));
 
     match &result {
         Ok(_) => progress::finish_progress_success(&spinner, "Merchant account created"),

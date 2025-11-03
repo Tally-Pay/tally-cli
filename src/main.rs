@@ -8,6 +8,7 @@
 mod commands;
 mod config;
 mod config_file;
+mod errors;
 mod utils;
 
 use anyhow::Result;
