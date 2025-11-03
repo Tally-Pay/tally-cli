@@ -12,6 +12,7 @@ use tally_sdk::{DashboardClient, SimpleTallyClient};
 pub enum OutputFormat {
     Human,
     Json,
+    Csv,
 }
 
 /// Wrapper function for backwards compatibility with main.rs
@@ -93,6 +94,33 @@ fn extract_and_execute_overview(
             let json = serde_json::to_string_pretty(&overview)?;
             Ok(json)
         }
+        OutputFormat::Csv => {
+            // CSV output for overview statistics
+            let mut wtr = csv::Writer::from_writer(vec![]);
+
+            // Write header
+            wtr.write_record([
+                "metric",
+                "value",
+            ])?;
+
+            // Write metrics
+            wtr.write_record(["merchant_address", &merchant.to_string()])?;
+            wtr.write_record(["merchant_authority", &overview.merchant_authority.to_string()])?;
+            wtr.write_record(["usdc_mint", &overview.usdc_mint.to_string()])?;
+            wtr.write_record(["total_revenue_usdc", &config.format_usdc(overview.total_revenue).to_string()])?;
+            wtr.write_record(["monthly_revenue_usdc", &config.format_usdc(overview.monthly_revenue).to_string()])?;
+            wtr.write_record(["average_revenue_per_user_usdc", &config.format_usdc(overview.average_revenue_per_user).to_string()])?;
+            wtr.write_record(["total_plans", &overview.total_plans.to_string()])?;
+            wtr.write_record(["active_subscriptions", &overview.active_subscriptions.to_string()])?;
+            wtr.write_record(["inactive_subscriptions", &overview.inactive_subscriptions.to_string()])?;
+            wtr.write_record(["churn_rate_percent", &format!("{:.2}", overview.churn_rate())])?;
+            wtr.write_record(["monthly_new_subscriptions", &overview.monthly_new_subscriptions.to_string()])?;
+            wtr.write_record(["monthly_canceled_subscriptions", &overview.monthly_canceled_subscriptions.to_string()])?;
+
+            let data = String::from_utf8(wtr.into_inner()?)?;
+            Ok(data)
+        }
         OutputFormat::Human => {
             let mut output = format!("\nMerchant Dashboard Overview - {merchant}\n");
             output.push_str(&"=".repeat(70));
@@ -159,6 +187,7 @@ fn extract_and_execute_overview(
 }
 
 /// Execute the Analytics command
+#[allow(clippy::too_many_lines)]
 fn extract_and_execute_analytics(
     dashboard_client: &DashboardClient,
     command_str: &str,
@@ -185,6 +214,42 @@ fn extract_and_execute_analytics(
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&analytics)?;
             Ok(json)
+        }
+        OutputFormat::Csv => {
+            // CSV output for plan analytics
+            let plan_id_str = String::from_utf8(analytics.plan.plan_id.to_vec())
+                .unwrap_or_else(|_| format!("{:?}", analytics.plan.plan_id));
+
+            let mut wtr = csv::Writer::from_writer(vec![]);
+
+            // Write header
+            wtr.write_record([
+                "metric",
+                "value",
+            ])?;
+
+            // Write metrics
+            wtr.write_record(["plan_id", &plan_id_str])?;
+            wtr.write_record(["plan_address", &analytics.plan_address.to_string()])?;
+            wtr.write_record(["price_usdc", &config.format_usdc(analytics.plan.price_usdc).to_string()])?;
+            wtr.write_record(["period_seconds", &analytics.plan.period_secs.to_string()])?;
+            wtr.write_record(["active", &analytics.plan.active.to_string()])?;
+            wtr.write_record(["total_revenue_usdc", &config.format_usdc(analytics.total_revenue).to_string()])?;
+            wtr.write_record(["monthly_revenue_usdc", &config.format_usdc(analytics.monthly_revenue).to_string()])?;
+            wtr.write_record(["active_count", &analytics.active_count.to_string()])?;
+            wtr.write_record(["inactive_count", &analytics.inactive_count.to_string()])?;
+            wtr.write_record(["total_subscriptions", &analytics.total_subscriptions().to_string()])?;
+            wtr.write_record(["churn_rate_percent", &format!("{:.2}", analytics.churn_rate())])?;
+            wtr.write_record(["average_duration_days", &format!("{:.1}", analytics.average_duration_days)])?;
+            wtr.write_record(["monthly_new_subscriptions", &analytics.monthly_new_subscriptions.to_string()])?;
+            wtr.write_record(["monthly_canceled_subscriptions", &analytics.monthly_canceled_subscriptions.to_string()])?;
+            wtr.write_record(["monthly_growth_rate_percent", &format!("{:.2}", analytics.monthly_growth_rate())])?;
+            if let Some(conversion_rate) = analytics.conversion_rate {
+                wtr.write_record(["conversion_rate_percent", &format!("{conversion_rate:.2}")])?;
+            }
+
+            let data = String::from_utf8(wtr.into_inner()?)?;
+            Ok(data)
         }
         OutputFormat::Human => {
             // Convert plan_id bytes to string
@@ -385,6 +450,46 @@ fn extract_and_execute_subscriptions(
         OutputFormat::Json => {
             let json = serde_json::to_string_pretty(&subscriptions)?;
             Ok(json)
+        }
+        OutputFormat::Csv => {
+            // CSV output for subscriptions
+            let mut wtr = csv::Writer::from_writer(vec![]);
+
+            // Write header
+            wtr.write_record([
+                "subscriber",
+                "plan_id",
+                "plan_address",
+                "status",
+                "active",
+                "renewals",
+                "total_paid_usdc",
+                "price_usdc",
+                "period_seconds",
+                "next_renewal_timestamp",
+            ])?;
+
+            // Write data rows
+            for sub in &subscriptions {
+                let plan_id_str = String::from_utf8(sub.plan.plan_id.to_vec())
+                    .unwrap_or_else(|_| format!("{:?}", sub.plan.plan_id));
+
+                wtr.write_record([
+                    sub.subscription.subscriber.to_string(),
+                    plan_id_str,
+                    sub.subscription.plan.to_string(),
+                    format!("{:?}", sub.status),
+                    sub.subscription.active.to_string(),
+                    sub.subscription.renewals.to_string(),
+                    config.format_usdc(sub.total_paid).to_string(),
+                    config.format_usdc(sub.plan.price_usdc).to_string(),
+                    sub.plan.period_secs.to_string(),
+                    sub.subscription.next_renewal_ts.to_string(),
+                ])?;
+            }
+
+            let data = String::from_utf8(wtr.into_inner()?)?;
+            Ok(data)
         }
         OutputFormat::Human => {
             let mut output = format!("\nSubscriptions for Merchant: {merchant}\n");

@@ -52,6 +52,7 @@ struct Cli {
 enum OutputFormat {
     Human,
     Json,
+    Csv,
 }
 
 #[derive(Subcommand, Debug)]
@@ -505,6 +506,10 @@ async fn main() -> Result<()> {
                 });
                 println!("{}", serde_json::to_string_pretty(&json_output)?);
             }
+            OutputFormat::Csv => {
+                // CSV is already formatted by commands, just print it
+                println!("{output}");
+            }
         },
         Err(e) => {
             match output_format {
@@ -517,6 +522,10 @@ async fn main() -> Result<()> {
                         "error": e.to_string()
                     });
                     println!("{}", serde_json::to_string_pretty(&json_output)?);
+                }
+                OutputFormat::Csv => {
+                    // For CSV, output error as plain text to stderr
+                    eprintln!("Error: {e}");
                 }
             }
             std::process::exit(1);
@@ -545,6 +554,7 @@ fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
     match format_str.to_lowercase().as_str() {
         "human" => Ok(OutputFormat::Human),
         "json" => Ok(OutputFormat::Json),
+        "csv" => Ok(OutputFormat::Csv),
         _ => Err(anyhow::anyhow!("Invalid output format: {format_str}")),
     }
 }
@@ -813,6 +823,7 @@ fn execute_dashboard_commands(
 ) -> Result<String> {
     let output_format = match cli.output {
         Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
+        Some(OutputFormat::Csv) => commands::dashboard::OutputFormat::Csv,
         _ => commands::dashboard::OutputFormat::Human,
     };
     let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
@@ -939,9 +950,16 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_output_format_csv() {
+        let result = parse_output_format("csv").unwrap();
+        assert!(matches!(result, OutputFormat::Csv));
+    }
+
+    #[test]
     fn test_parse_output_format_case_insensitive() {
         assert!(matches!(parse_output_format("Human").unwrap(), OutputFormat::Human));
         assert!(matches!(parse_output_format("JSON").unwrap(), OutputFormat::Json));
+        assert!(matches!(parse_output_format("CSV").unwrap(), OutputFormat::Csv));
         assert!(matches!(parse_output_format("HUMAN").unwrap(), OutputFormat::Human));
     }
 
