@@ -188,6 +188,17 @@ enum Commands {
         subscriber_keypair: Option<String>,
     },
 
+    /// Renew a subscription (keeper operation)
+    RenewSubscription {
+        /// Subscription account address
+        #[arg(long)]
+        subscription: String,
+
+        /// Keeper keypair (defaults to ~/.config/solana/id.json)
+        #[arg(long)]
+        keeper_keypair: Option<String>,
+    },
+
     /// Close a canceled subscription and reclaim rent
     CloseSubscription {
         /// Subscription account address
@@ -526,6 +537,20 @@ async fn execute_command(
                 tally_client,
                 &request,
                 subscriber_keypair.as_deref(),
+                config,
+            )
+            .await
+        }
+
+        Commands::RenewSubscription {
+            subscription,
+            keeper_keypair,
+        } => {
+            commands::execute_renew_subscription(
+                tally_client,
+                subscription,
+                keeper_keypair.as_deref(),
+                cli.usdc_mint.as_deref(),
                 config,
             )
             .await
