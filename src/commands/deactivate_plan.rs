@@ -9,6 +9,13 @@ use tracing::info;
 
 /// Execute the deactivate plan command
 ///
+/// # Arguments
+/// * `tally_client` - Tally SDK client
+/// * `plan_str` - Plan PDA address as string
+/// * `authority_path` - Optional path to authority keypair
+/// * `skip_confirm` - Skip confirmation prompt if true
+/// * `dry_run` - Preview operation without executing if true
+///
 /// # Errors
 /// Returns error if plan deactivation fails due to invalid parameters, network issues, or Solana program errors
 #[allow(clippy::cognitive_complexity)] // Complex validation logic for plan deactivation
@@ -16,6 +23,8 @@ pub async fn execute(
     tally_client: &SimpleTallyClient,
     plan_str: &str,
     authority_path: Option<&str>,
+    skip_confirm: bool,
+    dry_run: bool,
 ) -> Result<String> {
     info!("Starting plan deactivation");
 
@@ -62,6 +71,48 @@ pub async fn execute(
     let merchant = tally_client
         .get_merchant(&plan.merchant)?
         .ok_or_else(|| anyhow!("Merchant account not found at address: {}", plan.merchant))?;
+
+    // Show impact summary
+    println!("\n⚠️  Deactivation Impact Summary");
+    println!("══════════════════════════════════════════════════");
+    println!("Plan ID:        {}", plan.plan_id_str());
+    println!("Plan Name:      {}", plan.name_str());
+    println!("Current Status: Active");
+    println!("\nAfter deactivation:");
+    println!("• No new subscriptions will be allowed");
+    println!("• Existing subscriptions will continue until canceled");
+    println!("• Plan cannot be reactivated (permanent)");
+    println!("══════════════════════════════════════════════════\n");
+
+    // Dry-run mode: show what would happen but don't execute
+    if dry_run {
+        return Ok(format!(
+            "DRY RUN - Would deactivate plan:\n\
+             Plan PDA: {}\n\
+             Plan ID: {}\n\
+             Current Status: Active\n\
+             New Status: Inactive\n\
+             \n\
+             Note: This was a dry run. No changes were made.\n\
+             Remove --dry-run flag to execute the deactivation.",
+            plan_pda,
+            plan.plan_id_str()
+        ));
+    }
+
+    // Confirmation prompt (unless --yes flag is set)
+    if !skip_confirm {
+        use dialoguer::Confirm;
+        let confirmed = Confirm::new()
+            .with_prompt("Are you sure you want to deactivate this plan? This action is permanent.")
+            .default(false)
+            .interact()
+            .map_err(|e| anyhow!("Failed to read confirmation: {e}"))?;
+
+        if !confirmed {
+            return Ok("Plan deactivation canceled by user.".to_string());
+        }
+    }
 
     // Build update_plan instruction to set active = false
     info!("Building update_plan instruction to deactivate plan");

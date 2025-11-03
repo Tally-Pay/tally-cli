@@ -280,6 +280,14 @@ enum PlanCommands {
         /// Authority keypair for the merchant
         #[arg(long)]
         authority: Option<String>,
+
+        /// Skip confirmation prompt (for scripts)
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Preview the operation without executing it
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -677,8 +685,20 @@ async fn execute_plan_commands(
             .await
         }
 
-        PlanCommands::Deactivate { plan, authority } => {
-            commands::execute_deactivate_plan(tally_client, plan, authority.as_deref()).await
+        PlanCommands::Deactivate {
+            plan,
+            authority,
+            yes,
+            dry_run,
+        } => {
+            commands::execute_deactivate_plan(
+                tally_client,
+                plan,
+                authority.as_deref(),
+                *yes,
+                *dry_run,
+            )
+            .await
         }
     }
 }
