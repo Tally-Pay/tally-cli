@@ -61,65 +61,47 @@ pub async fn execute(
         plan.plan_id_str()
     );
 
-    // IMPORTANT NOTE: The current Anchor program does not have a deactivate_plan instruction.
-    // This implementation assumes such an instruction would be added to the program.
-    // For now, we'll return an error explaining this limitation.
+    // Fetch merchant account (required for builder validation)
+    let merchant = tally_client
+        .get_merchant(&plan.merchant)?
+        .ok_or_else(|| anyhow!("Merchant account not found at address: {}", plan.merchant))?;
 
-    Err(anyhow!(
-        "PROGRAM LIMITATION: The current Tally subscription program does not have a 'deactivate_plan' instruction.\n\
-        To implement plan deactivation, the following would be needed:\n\
-        1. Add a 'deactivate_plan' instruction to the Anchor program that sets plan.active = false\n\
-        2. The instruction would have discriminator: [91, 38, 214, 232, 172, 21, 30, 93] (computed from SHA256('global:deactivate_plan'))\n\
-        3. Required accounts: payer (authority), authority (signer), plan (PDA, mutable)\n\
-        4. No additional instruction data needed besides the discriminator\n\
-        \n\
-        Current plan details:\n\
-        - Plan ID: {}\n\
-        - Plan Name: {}\n\
-        - Currently Active: {}\n\
-        - Merchant: {}",
-        plan.plan_id_str(),
-        plan.name_str(),
-        plan.active,
-        plan.merchant
-    ))
+    // Build update_plan instruction to set active = false
+    info!("Building update_plan instruction to deactivate plan");
 
-    // This would be the implementation if the instruction existed:
-    /*
-    // Build deactivate_plan instruction manually (since no builder exists in tally-sdk)
-    let instruction = build_deactivate_plan_instruction(
-        &authority.pubkey(),
-        &plan_pda,
-        tally_client.program_id(),
-    )?;
+    let update_args = tally_sdk::program_types::UpdatePlanArgs {
+        name: None,
+        active: Some(false),
+        price_usdc: None,
+        period_secs: None,
+        grace_secs: None,
+    };
 
-    info!("Building transaction with deactivate_plan instruction");
-
-    // Get recent blockhash
-    let recent_blockhash = tally_client
-        .rpc()
-        .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())?
-        .0;
-
-    // Create and sign transaction
-    let mut transaction = Transaction::new_with_payer(&[instruction], Some(&authority.pubkey()));
-    transaction.sign(&[&authority], recent_blockhash);
+    let instruction = tally_sdk::UpdatePlanBuilder::new()
+        .authority(authority.pubkey())
+        .payer(authority.pubkey())
+        .plan_key(plan_pda)
+        .update_args(update_args)
+        .program_id(tally_client.program_id())
+        .build_instruction(&merchant)?;
 
     info!("Submitting transaction...");
 
-    // Submit transaction
-    let signature = tally_client
-        .rpc()
-        .send_and_confirm_transaction_with_spinner(&transaction)?;
+    // Create and submit transaction
+    let mut transaction = tally_sdk::solana_sdk::transaction::Transaction::new_with_payer(
+        &[instruction],
+        Some(&authority.pubkey()),
+    );
+
+    let signature = tally_client.submit_transaction(&mut transaction, &[&authority])?;
 
     info!("Transaction confirmed: {}", signature);
 
     // Return success message
     Ok(format!(
-        "Plan deactivated successfully!\nPlan PDA: {}\nPlan ID: {}\nTransaction signature: {}",
+        "Plan deactivated successfully!\nPlan PDA: {}\nPlan ID: {}\nNew Active Status: false\nTransaction: {}",
         plan_pda,
         plan.plan_id_str(),
         signature
     ))
-    */
 }
