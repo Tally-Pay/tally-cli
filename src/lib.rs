@@ -7,8 +7,10 @@
 pub mod commands;
 pub mod config;
 pub mod config_file;
+pub mod errors;
 pub mod utils;
 
 // Re-export for easy access
 pub use commands::*;
 pub use config::*;
+pub use errors::*;
