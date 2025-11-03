@@ -323,6 +323,9 @@ enum Commands {
         #[arg(long)]
         merchant: String,
     },
+
+    /// Show global configuration details
+    ShowConfig,
 }
 
 #[derive(Subcommand, Debug)]
@@ -727,6 +730,17 @@ async fn execute_command(
                 output_format,
             };
             commands::execute_show_merchant(tally_client, &request, config).await
+        }
+
+        Commands::ShowConfig => {
+            let output_format = match cli.output {
+                Some(OutputFormat::Json) => "json",
+                _ => "human",
+            };
+            let request = commands::show_config::ShowConfigRequest {
+                output_format,
+            };
+            commands::execute_show_config(tally_client, &request, config).await
         }
     }
 }
