@@ -1,18 +1,19 @@
 //! Interactive initialization wizard for first-time setup
 //!
 //! Provides a guided setup experience for new merchants, including:
-//! - Pre-flight checks (wallet, SOL balance, RPC connectivity)
+//! - Interactive wallet selection with balance display
+//! - Pre-flight checks (RPC connectivity, SOL balance)
 //! - Interactive prompts for treasury and fee setup
 //! - Merchant initialization
 //! - Optional first plan creation
 
 use crate::config::TallyCliConfig;
 use anyhow::{anyhow, Context, Result};
-use dialoguer::{Confirm, Input};
+use dialoguer::{Confirm, Input, Select};
 use std::str::FromStr;
 use tally_sdk::solana_sdk::commitment_config::CommitmentConfig;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
-use tally_sdk::solana_sdk::signature::Signer;
+use tally_sdk::solana_sdk::signature::{Keypair, Signer};
 use tally_sdk::{get_usdc_mint, load_keypair, SimpleTallyClient};
 
 /// Minimum SOL balance required for merchant initialization (0.01 SOL for rent + fees)
@@ -31,7 +32,7 @@ fn lamports_to_sol(lamports: u64) -> f64 {
 /// Execute the interactive initialization wizard
 ///
 /// # Errors
-/// Returns error if any step fails (wallet checks, RPC connectivity, merchant initialization)
+/// Returns error if any step fails (wallet selection, RPC connectivity, merchant initialization)
 pub async fn execute(
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
@@ -39,14 +40,11 @@ pub async fn execute(
 ) -> Result<String> {
     println!("\n🚀 Welcome to Tally! Let's set up your merchant account.\n");
 
-    // Step 1: Pre-flight checks
-    println!("Running pre-flight checks...\n");
+    // Step 1: Wallet selection (with info display and progressive disclosure)
+    let wallet = prompt_wallet_selection(tally_client)?;
 
-    // Check wallet
-    print!("Checking wallet... ");
-    let wallet = load_keypair(None).context("Failed to load wallet")?;
-    println!("✓ found at ~/.config/solana/id.json");
-    println!("   Address: {}", wallet.pubkey());
+    // Step 2: Pre-flight checks with selected wallet
+    println!("\nRunning pre-flight checks...\n");
 
     // Check RPC connectivity
     print!("Checking RPC connection... ");
@@ -55,7 +53,7 @@ pub async fn execute(
         .context("Failed to connect to RPC endpoint")?;
     println!("✓ connected");
 
-    // Check wallet balance
+    // Check wallet balance with recovery flow
     print!("Checking wallet balance... ");
     let balance = tally_client
         .rpc_client
@@ -66,26 +64,18 @@ pub async fn execute(
     println!("✓ {balance_sol:.6} SOL");
 
     if balance_sol < MIN_SOL_BALANCE {
-        return Err(anyhow!(
-            "\n❌ Insufficient SOL balance\n\
-             \n\
-             You have {balance_sol:.6} SOL, but need at least {MIN_SOL_BALANCE:.6} SOL for transaction fees and rent.\n\
-             \n\
-             Get SOL at:\n\
-             • Devnet: https://faucet.solana.com\n\
-             • Mainnet: Use a centralized exchange or DEX"
-        ));
+        handle_insufficient_balance(balance_sol)?;
     }
 
     println!("\n✅ All pre-flight checks passed!\n");
 
-    // Step 2: Treasury setup
+    // Step 3: Treasury setup
     let treasury_ata = prompt_treasury_setup(tally_client)?;
 
-    // Step 3: Fee setup
+    // Step 4: Fee setup
     let fee_bps = prompt_fee_setup()?;
 
-    // Step 4: Initialize merchant
+    // Step 5: Initialize merchant
     println!("\n⏳ Initializing merchant account...");
 
     let usdc_mint = get_usdc_mint(None)?;
@@ -95,7 +85,7 @@ pub async fn execute(
 
     println!("✅ Merchant account created!\n");
 
-    // Step 5: Display results
+    // Step 6: Display results
     let fee_percentage = config.format_fee_percentage(fee_bps);
     let ata_message = if created_ata {
         "Treasury ATA created"
@@ -129,7 +119,7 @@ pub async fn execute(
         ata_message
     );
 
-    // Step 6: Optional plan creation guidance
+    // Step 7: Optional plan creation guidance
     if !skip_plan {
         println!();
         let create_plan = Confirm::new()
@@ -160,6 +150,139 @@ pub async fn execute(
     output.push_str("\n💡 Run 'tally-merchant --help' to see all available commands.\n");
 
     Ok(output)
+}
+
+/// Prompt for wallet selection with info display and progressive disclosure
+///
+/// Shows default wallet info (address, balance) and asks for confirmation.
+/// If user declines, prompts for custom wallet path.
+///
+/// # Errors
+/// Returns error if wallet cannot be loaded or RPC calls fail
+fn prompt_wallet_selection(tally_client: &SimpleTallyClient) -> Result<Keypair> {
+    println!("Wallet Setup");
+    println!("──────────────────────────────────────────────────");
+    println!(
+        "The merchant authority wallet will be used to:\n\
+         • Create and manage subscription plans\n\
+         • Update merchant settings\n\
+         • Withdraw merchant fees\n"
+    );
+
+    // Try to load default wallet
+    let default_path = "~/.config/solana/id.json";
+
+    if let Ok(wallet) = load_keypair(None) {
+        // Get balance for display
+        let balance = tally_client
+            .rpc_client
+            .get_balance_with_commitment(&wallet.pubkey(), CommitmentConfig::confirmed())
+            .context("Failed to get wallet balance")?
+            .value;
+        let balance_sol = lamports_to_sol(balance);
+
+        // Show wallet info
+        println!("Found wallet: {default_path}");
+        println!("Address: {}", wallet.pubkey());
+        println!("Balance: {balance_sol:.6} SOL\n");
+
+        // Ask confirmation
+        let use_default = Confirm::new()
+            .with_prompt("Use this wallet as merchant authority?")
+            .default(true)
+            .interact()
+            .context("Failed to read user input")?;
+
+        if use_default {
+            Ok(wallet)
+        } else {
+            // User declined, ask for custom path
+            prompt_custom_wallet_path()
+        }
+    } else {
+        // No default wallet found
+        println!("⚠️  No default Solana wallet found at {default_path}\n");
+        prompt_custom_wallet_path()
+    }
+}
+
+/// Prompt for custom wallet path with validation loop
+///
+/// # Errors
+/// Returns error if user input fails (this is terminal - exits the program)
+fn prompt_custom_wallet_path() -> Result<Keypair> {
+    loop {
+        let path: String = Input::new()
+            .with_prompt("Enter wallet path")
+            .interact_text()
+            .context("Failed to read user input")?;
+
+        match load_keypair(Some(&path)) {
+            Ok(wallet) => {
+                println!("✓ Wallet loaded successfully");
+                println!("   Address: {}\n", wallet.pubkey());
+                return Ok(wallet);
+            }
+            Err(e) => {
+                println!("❌ Failed to load wallet: {e}\n");
+                // Loop continues, prompting again
+            }
+        }
+    }
+}
+
+/// Handle insufficient balance with recovery options
+///
+/// Displays error message and offers actionable choices to the user.
+///
+/// # Errors
+/// Returns error after user makes a choice (to exit the wizard)
+fn handle_insufficient_balance(balance_sol: f64) -> Result<()> {
+    println!(
+        "\n❌ Insufficient SOL balance\n\
+         \n\
+         You have {balance_sol:.6} SOL, but need at least {MIN_SOL_BALANCE:.6} SOL\n\
+         for transaction fees and rent.\n\
+         \n\
+         Get SOL at:\n\
+         • Devnet: https://faucet.solana.com\n\
+         • Mainnet: Use a centralized exchange or DEX\n"
+    );
+
+    let choices = vec![
+        "Fund this wallet and retry",
+        "Use a different wallet",
+        "Exit setup",
+    ];
+
+    let selection = Select::new()
+        .with_prompt("What would you like to do?")
+        .items(&choices)
+        .default(0)
+        .interact()
+        .context("Failed to read user input")?;
+
+    match selection {
+        0 => {
+            // Fund and retry - currently just exits with helpful message
+            Err(anyhow!(
+                "Please fund your wallet with at least {MIN_SOL_BALANCE:.6} SOL,\n\
+                 then run 'tally-merchant init' again."
+            ))
+        }
+        1 => {
+            // Use different wallet - currently just exits with helpful message
+            Err(anyhow!(
+                "Please run 'tally-merchant init' again and select a different wallet\n\
+                 when prompted during the wallet setup step."
+            ))
+        }
+        2 => {
+            // Exit
+            Err(anyhow!("Setup canceled by user"))
+        }
+        _ => unreachable!(),
+    }
 }
 
 /// Prompt for treasury setup
