@@ -7,11 +7,13 @@
 
 mod commands;
 mod config;
+mod config_file;
 mod utils;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::TallyCliConfig;
+use config_file::ConfigFile;
 use tally_sdk::SimpleTallyClient;
 
 #[derive(Parser, Debug)]
@@ -83,8 +85,87 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum ConfigCommands {
-    /// Show global configuration details
+    /// Initialize a new config file with default profiles
+    Init {
+        /// Overwrite existing config file
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Show on-chain global program configuration
     Show,
+
+    /// List all configuration values from config file
+    List {
+        /// Show specific profile (defaults to active profile)
+        #[arg(long)]
+        profile: Option<String>,
+    },
+
+    /// Get a specific configuration value
+    Get {
+        /// Configuration key (e.g., rpc-url, merchant, program-id)
+        key: String,
+
+        /// Get from specific profile (defaults to active profile)
+        #[arg(long)]
+        profile: Option<String>,
+    },
+
+    /// Set a configuration value
+    Set {
+        /// Configuration key (e.g., rpc-url, merchant, program-id)
+        key: String,
+
+        /// Configuration value
+        value: String,
+
+        /// Set in specific profile (defaults to active profile)
+        #[arg(long)]
+        profile: Option<String>,
+    },
+
+    /// Manage profiles
+    Profile {
+        #[command(subcommand)]
+        command: ProfileCommands,
+    },
+
+    /// Show config file path
+    Path,
+}
+
+#[derive(Subcommand, Debug)]
+enum ProfileCommands {
+    /// List all available profiles
+    List,
+
+    /// Show active profile name
+    Active,
+
+    /// Set active profile
+    Use {
+        /// Profile name to activate
+        profile: String,
+    },
+
+    /// Create a new profile
+    Create {
+        /// Profile name
+        name: String,
+
+        /// RPC URL for this profile
+        #[arg(long)]
+        rpc_url: String,
+
+        /// Program ID (optional)
+        #[arg(long)]
+        program_id: Option<String>,
+
+        /// USDC mint address (optional)
+        #[arg(long)]
+        usdc_mint: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -258,13 +339,33 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = TallyCliConfig::new();
 
-    // Use configuration with CLI overrides
-    let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
+    // Load config file (if it exists) for additional defaults
+    let config_file = ConfigFile::load().unwrap_or_else(|_| ConfigFile::new());
+
+    // Use configuration with precedence: CLI flags > env vars > config file > defaults
+    // RPC URL precedence
+    let rpc_url = cli
+        .rpc_url
+        .as_deref()
+        .or_else(|| std::env::var("TALLY_RPC_URL").ok().as_deref().map(|_| config.default_rpc_url.as_str()))
+        .or_else(|| config_file.active_profile().map(|p| p.rpc_url.as_str()))
+        .unwrap_or(&config.default_rpc_url);
+
+    // Program ID precedence
+    let program_id_from_config = cli
+        .program_id
+        .as_deref()
+        .or_else(|| {
+            config_file
+                .active_profile()
+                .and_then(|p| p.program_id.as_deref())
+        });
+
     let default_output_format = parse_output_format(&config.default_output_format)?;
     let output_format = cli.output.as_ref().unwrap_or(&default_output_format);
 
     // Initialize Tally client with optional program ID override
-    let tally_client = if let Some(program_id) = &cli.program_id {
+    let tally_client = if let Some(program_id) = program_id_from_config {
         SimpleTallyClient::new_with_program_id(rpc_url, program_id)?
     } else {
         SimpleTallyClient::new(rpc_url)?
@@ -336,6 +437,8 @@ async fn execute_config_commands(
     command: &ConfigCommands,
 ) -> Result<String> {
     match command {
+        ConfigCommands::Init { force } => commands::config_file_ops::init(*force),
+
         ConfigCommands::Show => {
             let output_format = match cli.output {
                 Some(OutputFormat::Json) => "json",
@@ -344,6 +447,41 @@ async fn execute_config_commands(
             let request = commands::show_config::ShowConfigRequest { output_format };
             commands::execute_show_config(tally_client, &request, config).await
         }
+
+        ConfigCommands::List { profile } => {
+            commands::config_file_ops::list(profile.as_deref())
+        }
+
+        ConfigCommands::Get { key, profile } => {
+            commands::config_file_ops::get(key, profile.as_deref())
+        }
+
+        ConfigCommands::Set {
+            key,
+            value,
+            profile,
+        } => commands::config_file_ops::set(key, value, profile.as_deref()),
+
+        ConfigCommands::Path => commands::config_file_ops::path(),
+
+        ConfigCommands::Profile { command } => match command {
+            ProfileCommands::List => commands::config_file_ops::list_profiles(),
+            ProfileCommands::Active => commands::config_file_ops::show_active_profile(),
+            ProfileCommands::Use { profile } => {
+                commands::config_file_ops::use_profile(profile)
+            }
+            ProfileCommands::Create {
+                name,
+                rpc_url,
+                program_id,
+                usdc_mint,
+            } => commands::config_file_ops::create_profile(
+                name,
+                rpc_url,
+                program_id.as_deref(),
+                usdc_mint.as_deref(),
+            ),
+        },
     }
 }
 

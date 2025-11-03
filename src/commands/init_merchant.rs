@@ -1,6 +1,7 @@
 //! Init merchant command implementation
 
 use crate::config::TallyCliConfig;
+use crate::config_file::ConfigFile;
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
@@ -47,6 +48,13 @@ pub async fn execute(
         signature, created_ata
     );
 
+    // Save merchant PDA to config file for future use
+    let config_save_result = save_merchant_to_config(&merchant_pda);
+    let config_message = match config_save_result {
+        Ok(profile_name) => format!("\n✓ Merchant PDA saved to config (profile: {profile_name})"),
+        Err(e) => format!("\n⚠ Could not save merchant PDA to config: {e}"),
+    };
+
     // Return success message with merchant PDA, transaction signature, and ATA creation info
     let fee_percentage = config.format_fee_percentage(fee_bps);
     let ata_message = if created_ata {
@@ -56,13 +64,33 @@ pub async fn execute(
     };
 
     Ok(format!(
-        "Merchant initialization successful!\n{}\nMerchant PDA: {}\nTransaction signature: {}\nAuthority: {}\nTreasury ATA: {}\nPlatform fee: {} bps ({:.1}%)",
+        "Merchant initialization successful!\n{}\nMerchant PDA: {}\nTransaction signature: {}\nAuthority: {}\nTreasury ATA: {}\nPlatform fee: {} bps ({:.1}%){}",
         ata_message,
         merchant_pda,
         signature,
         authority.pubkey(),
         treasury_ata,
         fee_bps,
-        fee_percentage
+        fee_percentage,
+        config_message
     ))
+}
+
+/// Save merchant PDA to config file
+///
+/// Returns the profile name where the merchant was saved
+fn save_merchant_to_config(merchant_pda: &Pubkey) -> Result<String> {
+    let mut config_file = ConfigFile::load().unwrap_or_else(|_| ConfigFile::new());
+
+    // Get active profile name before setting merchant
+    let profile_name = config_file
+        .defaults
+        .active_profile
+        .clone()
+        .unwrap_or_else(|| "devnet".to_string());
+
+    config_file.set_merchant(merchant_pda.to_string())?;
+    config_file.save()?;
+
+    Ok(profile_name)
 }

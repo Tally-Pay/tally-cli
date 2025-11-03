@@ -6,6 +6,7 @@
 
 pub mod commands;
 pub mod config;
+pub mod config_file;
 pub mod utils;
 
 // Re-export for easy access
