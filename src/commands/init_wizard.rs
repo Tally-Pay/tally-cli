@@ -217,7 +217,10 @@ fn prompt_custom_wallet_path() -> Result<Keypair> {
             .interact_text()
             .context("Failed to read user input")?;
 
-        match load_keypair(Some(&path)) {
+        // Expand tilde to home directory if needed
+        let expanded_path = expand_tilde(&path);
+
+        match load_keypair(Some(&expanded_path)) {
             Ok(wallet) => {
                 println!("✓ Wallet loaded successfully");
                 println!("   Address: {}\n", wallet.pubkey());
@@ -229,6 +232,18 @@ fn prompt_custom_wallet_path() -> Result<Keypair> {
             }
         }
     }
+}
+
+/// Expand tilde (~) to home directory path
+///
+/// Converts paths like `~/foo` to `/home/user/foo`
+fn expand_tilde(path: &str) -> String {
+    if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return path.replacen('~', &home.to_string_lossy(), 1);
+        }
+    }
+    path.to_string()
 }
 
 /// Handle insufficient balance with recovery options
