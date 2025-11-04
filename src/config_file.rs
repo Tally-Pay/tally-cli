@@ -180,12 +180,42 @@ impl ConfigFile {
     }
 
     /// Get the active profile configuration
+    ///
+    /// Checks environment variable `TALLY_PROFILE` first, then falls back to config file
+    ///
+    /// Precedence order:
+    /// 1. `TALLY_PROFILE` environment variable
+    /// 2. `active_profile` from config file
     #[must_use]
     pub fn active_profile(&self) -> Option<&ProfileConfig> {
+        // Check TALLY_PROFILE environment variable first
+        if let Ok(env_profile) = std::env::var("TALLY_PROFILE") {
+            if let Some(profile) = self.profiles.get(&env_profile) {
+                return Some(profile);
+            }
+        }
+
+        // Fall back to config file active_profile
         self.defaults
             .active_profile
             .as_ref()
             .and_then(|name| self.profiles.get(name))
+    }
+
+    /// Get the active profile name
+    ///
+    /// Checks environment variable `TALLY_PROFILE` first, then falls back to config file
+    #[must_use]
+    pub fn active_profile_name(&self) -> Option<String> {
+        // Check TALLY_PROFILE environment variable first
+        if let Ok(env_profile) = std::env::var("TALLY_PROFILE") {
+            if self.profiles.contains_key(&env_profile) {
+                return Some(env_profile);
+            }
+        }
+
+        // Fall back to config file active_profile
+        self.defaults.active_profile.clone()
     }
 
     /// Get a specific profile by name

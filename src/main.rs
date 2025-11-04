@@ -206,6 +206,12 @@ enum ProfileCommands {
     /// Show active profile name
     Active,
 
+    /// Show specific profile configuration
+    Show {
+        /// Profile name to display (defaults to active profile)
+        profile: Option<String>,
+    },
+
     /// Set active profile
     Use {
         /// Profile name to activate
@@ -644,6 +650,9 @@ async fn execute_config_commands(
         ConfigCommands::Profile { command } => match command {
             ProfileCommands::List => commands::config_file_ops::list_profiles(),
             ProfileCommands::Active => commands::config_file_ops::show_active_profile(),
+            ProfileCommands::Show { profile } => {
+                commands::config_file_ops::show_profile(profile.as_deref())
+            }
             ProfileCommands::Use { profile } => {
                 commands::config_file_ops::use_profile(profile)
             }

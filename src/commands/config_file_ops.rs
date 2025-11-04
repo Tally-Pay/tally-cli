@@ -60,7 +60,7 @@ pub fn list(profile_name: Option<&str>) -> Result<String> {
 
     let profile_name_display = profile_name
         .map(String::from)
-        .or_else(|| config.defaults.active_profile.clone())
+        .or_else(|| config.active_profile_name())
         .unwrap_or_else(|| "unknown".to_string());
 
     let mut output = String::new();
@@ -128,33 +128,57 @@ pub fn get(key: &str, profile_name: Option<&str>) -> Result<String> {
 pub fn set(key: &str, value: &str, profile_name: Option<&str>) -> Result<String> {
     let mut config = ConfigFile::load()?;
 
-    // Temporarily set active profile if specified
+    // Get the old value before setting
     let original_active = config.defaults.active_profile.clone();
+    let target_profile = profile_name
+        .map(String::from)
+        .or_else(|| config.active_profile_name())
+        .context("No active profile set. Run 'tally-merchant config init'")?;
+
+    // Temporarily set active profile if specified to read old value
     if let Some(name) = profile_name {
         config.set_active_profile(name.to_string());
     }
 
+    let old_value = config.get_profile_value(key).ok().and_then(|v| v);
+
     config.set_profile_value(key, value.to_string())?;
 
     // Restore original active profile before saving
-    if let Some(original) = original_active {
-        config.set_active_profile(original);
+    if let Some(ref original) = original_active {
+        config.set_active_profile(original.clone());
     }
 
     config.save()?;
 
-    let profile_display = profile_name
-        .map(String::from)
-        .or(config.defaults.active_profile)
-        .unwrap_or_else(|| "unknown".to_string());
-
-    Ok(format!(
-        "{} Set {} = {} (profile: {})",
+    // Build enhanced feedback message
+    let mut output = String::new();
+    writeln!(&mut output, "{} Set {} for profile '{}'",
         Theme::success("✓"),
         Theme::info(key),
-        Theme::value(value),
-        Theme::highlight(&profile_display)
-    ))
+        Theme::highlight(&target_profile))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "  Profile: {}", Theme::highlight(&target_profile))?;
+    writeln!(&mut output, "  Key:     {}", Theme::info(key))?;
+
+    if let Some(old) = old_value {
+        writeln!(&mut output, "  Before:  {}", Theme::dim(&old))?;
+        writeln!(&mut output, "  After:   {}", Theme::value(value))?;
+    } else {
+        writeln!(&mut output, "  Value:   {}", Theme::value(value))?;
+    }
+
+    // Add helpful hint if they used --profile override
+    writeln!(&mut output)?;
+    if profile_name.is_some() && original_active.as_deref() != Some(&target_profile) {
+        write!(&mut output, "  Note: Active profile remains '{}'",
+            Theme::highlight(original_active.as_deref().unwrap_or("unknown")))?;
+    } else {
+        write!(&mut output, "{}",
+            Theme::dim("  To change profiles: tally-merchant config profile use <name>"))?;
+    }
+
+    Ok(output)
 }
 
 /// Show config file path
@@ -179,7 +203,8 @@ pub fn list_profiles() -> Result<String> {
     writeln!(&mut output, "{}", Theme::header("Available Profiles:"))?;
     writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
 
-    let active_profile = config.defaults.active_profile.as_deref();
+    let active_profile = config.active_profile_name();
+    let active_profile = active_profile.as_deref();
 
     for (name, profile) in &config.profiles {
         let is_active = active_profile == Some(name.as_str());
@@ -211,7 +236,64 @@ pub fn list_profiles() -> Result<String> {
 pub fn show_active_profile() -> Result<String> {
     let config = ConfigFile::load()?;
 
-    Ok(config.defaults.active_profile.unwrap_or_else(|| "(none)".to_string()))
+    Ok(config.active_profile_name().unwrap_or_else(|| "(none)".to_string()))
+}
+
+/// Show specific profile configuration
+///
+/// # Errors
+///
+/// Returns an error if the config file cannot be loaded or if the specified profile does not exist
+pub fn show_profile(profile_name: Option<&str>) -> Result<String> {
+    let config = ConfigFile::load()?;
+
+    // Get the profile name and config
+    let (name, profile) = if let Some(n) = profile_name {
+        // Show specified profile
+        let name = n.to_string();
+        let profile = config.get_profile(&name)
+            .with_context(|| format!("Profile '{name}' not found"))?;
+        (name, profile)
+    } else {
+        // Show active profile
+        let name = config.active_profile_name()
+            .context("No active profile set. Run 'tally-merchant config init'")?;
+        let profile = config.get_profile(&name)
+            .with_context(|| format!("Active profile '{name}' not found"))?;
+        (name, profile)
+    };
+
+    let mut output = String::new();
+    writeln!(&mut output, "{} {}", Theme::header("Profile:"), Theme::highlight(&name))?;
+    writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{:<15} {}", Theme::info("RPC URL:"), Theme::value(&profile.rpc_url))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("Program ID:"),
+        profile.program_id.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::value(v)
+        ))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("USDC Mint:"),
+        profile.usdc_mint.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::dim(v)
+        ))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("Merchant:"),
+        profile.merchant.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::highlight(v)
+        ))?;
+    write!(&mut output, "{:<15} {}",
+        Theme::info("Wallet Path:"),
+        profile.wallet_path.as_ref().map_or_else(
+            || Theme::dim("(default)"),
+            |v| Theme::value(v)
+        ))?;
+
+    Ok(output)
 }
 
 /// Set active profile
@@ -220,6 +302,8 @@ pub fn show_active_profile() -> Result<String> {
 ///
 /// Returns an error if the config file cannot be loaded or saved, or if the specified profile does not exist
 pub fn use_profile(profile_name: &str) -> Result<String> {
+    use std::io::{self, Write};
+
     let mut config = ConfigFile::load()?;
 
     // Verify profile exists
@@ -239,10 +323,60 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
         ));
     }
 
+    let old_profile = config.defaults.active_profile.clone();
+
+    // Warn when switching to mainnet
+    if profile_name == "mainnet" && old_profile.as_deref() != Some("mainnet") {
+        eprintln!("{} Switching to 'mainnet' profile", Theme::warning("⚠"));
+        eprintln!();
+        eprintln!("  This will affect all subsequent commands.");
+        eprintln!("  Current profile: {}", Theme::highlight(old_profile.as_deref().unwrap_or("none")));
+        eprintln!();
+        eprint!("  Continue? (y/N): ");
+
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        if !input.trim().eq_ignore_ascii_case("y") {
+            return Ok("Cancelled".to_string());
+        }
+    }
+
+    let profile = config.profiles.get(profile_name)
+        .context("Profile not found")?
+        .clone();
+
     config.set_active_profile(profile_name.to_string());
     config.save()?;
 
-    Ok(format!("{} Active profile set to: {}", Theme::success("✓"), Theme::highlight(profile_name)))
+    // Build enhanced feedback message
+    let mut output = String::new();
+    writeln!(&mut output, "{} Switched to profile '{}'",
+        Theme::success("✓"),
+        Theme::highlight(profile_name))?;
+    writeln!(&mut output)?;
+
+    if let Some(old) = old_profile {
+        writeln!(&mut output, "  Previous: {}", Theme::dim(&old))?;
+    }
+    writeln!(&mut output, "  Current:  {}", Theme::highlight(profile_name))?;
+    writeln!(&mut output)?;
+
+    writeln!(&mut output, "  Configuration:")?;
+    writeln!(&mut output, "    rpc_url   = {}", Theme::value(&profile.rpc_url))?;
+    if let Some(ref program_id) = profile.program_id {
+        writeln!(&mut output, "    program_id = {}", Theme::dim(program_id))?;
+    }
+    if let Some(ref usdc_mint) = profile.usdc_mint {
+        writeln!(&mut output, "    usdc_mint  = {}", Theme::dim(usdc_mint))?;
+    }
+    if let Some(ref merchant) = profile.merchant {
+        writeln!(&mut output, "    merchant   = {}", Theme::highlight(merchant))?;
+    }
+
+    Ok(output)
 }
 
 /// Create a new profile
