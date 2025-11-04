@@ -276,6 +276,31 @@ pub fn format_subscriptions_json(
         .map_err(|e| anyhow!("Failed to serialize subscriptions to JSON: {e}"))
 }
 
+/// Detect network type from RPC URL
+///
+/// Returns a human-readable network name based on the RPC URL pattern:
+/// - "localnet" for localhost/127.0.0.1
+/// - "devnet" for devnet.solana.com
+/// - "testnet" for testnet.solana.com
+/// - "mainnet" for mainnet-beta.solana.com
+/// - "custom" for other URLs
+#[must_use]
+pub fn detect_network(rpc_url: &str) -> String {
+    let url_lower = rpc_url.to_lowercase();
+
+    if url_lower.contains("localhost") || url_lower.contains("127.0.0.1") {
+        "localnet".to_string()
+    } else if url_lower.contains("devnet") {
+        "devnet".to_string()
+    } else if url_lower.contains("testnet") {
+        "testnet".to_string()
+    } else if url_lower.contains("mainnet") {
+        "mainnet".to_string()
+    } else {
+        "custom".to_string()
+    }
+}
+
 /// Format unix timestamp to human-readable date
 ///
 /// Returns "Invalid" for timestamps that cannot be converted to valid dates,
@@ -321,4 +346,69 @@ pub fn format_timestamp(timestamp: i64) -> String {
                 )
             },
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_network_localnet() {
+        assert_eq!(detect_network("http://localhost:8899"), "localnet");
+        assert_eq!(detect_network("http://127.0.0.1:8899"), "localnet");
+        assert_eq!(detect_network("https://localhost:8899"), "localnet");
+    }
+
+    #[test]
+    fn test_detect_network_devnet() {
+        assert_eq!(
+            detect_network("https://api.devnet.solana.com"),
+            "devnet"
+        );
+        assert_eq!(
+            detect_network("http://api.devnet.solana.com"),
+            "devnet"
+        );
+    }
+
+    #[test]
+    fn test_detect_network_testnet() {
+        assert_eq!(
+            detect_network("https://api.testnet.solana.com"),
+            "testnet"
+        );
+    }
+
+    #[test]
+    fn test_detect_network_mainnet() {
+        assert_eq!(
+            detect_network("https://api.mainnet-beta.solana.com"),
+            "mainnet"
+        );
+        assert_eq!(
+            detect_network("https://mainnet.helius-rpc.com"),
+            "mainnet"
+        );
+    }
+
+    #[test]
+    fn test_detect_network_custom() {
+        assert_eq!(
+            detect_network("https://custom-rpc.example.com"),
+            "custom"
+        );
+        assert_eq!(
+            detect_network("https://my-private-node.com:8899"),
+            "custom"
+        );
+    }
+
+    #[test]
+    fn test_detect_network_case_insensitive() {
+        assert_eq!(
+            detect_network("HTTPS://API.DEVNET.SOLANA.COM"),
+            "devnet"
+        );
+        assert_eq!(detect_network("HTTP://LOCALHOST:8899"), "localnet");
+    }
 }

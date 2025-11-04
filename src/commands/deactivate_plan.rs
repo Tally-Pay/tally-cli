@@ -1,6 +1,8 @@
 //! Deactivate plan command implementation
 
+use crate::utils::colors::Theme;
 use anyhow::{anyhow, Result};
+use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
@@ -72,32 +74,32 @@ pub async fn execute(
         .get_merchant(&plan.merchant)?
         .ok_or_else(|| anyhow!("Merchant account not found at address: {}", plan.merchant))?;
 
-    // Show impact summary
-    println!("\n⚠️  Deactivation Impact Summary");
-    println!("══════════════════════════════════════════════════");
-    println!("Plan ID:        {}", plan.plan_id_str());
-    println!("Plan Name:      {}", plan.name_str());
-    println!("Current Status: Active");
-    println!("\nAfter deactivation:");
-    println!("• No new subscriptions will be allowed");
-    println!("• Existing subscriptions will continue until canceled");
-    println!("• Plan cannot be reactivated (permanent)");
-    println!("══════════════════════════════════════════════════\n");
+    // Show impact summary with colors
+    println!("\n{} {}", Theme::warning("⚠️"), Theme::header("Deactivation Impact Summary"));
+    println!("{}", Theme::dim("══════════════════════════════════════════════════"));
+    println!("{:<15} {}", Theme::info("Plan ID:"), Theme::value(&plan.plan_id_str()));
+    println!("{:<15} {}", Theme::info("Plan Name:"), Theme::value(&plan.name_str()));
+    println!("{:<15} {}", Theme::info("Current Status:"), Theme::active("Active"));
+    println!();
+    println!("{}", Theme::warning("After deactivation:"));
+    println!("  {} {}", Theme::dim("•"), Theme::dim("No new subscriptions will be allowed"));
+    println!("  {} {}", Theme::dim("•"), Theme::dim("Existing subscriptions will continue until canceled"));
+    println!("  {} {}", Theme::dim("•"), Theme::warning("Plan cannot be reactivated (permanent)"));
+    println!("{}\n", Theme::dim("══════════════════════════════════════════════════"));
 
     // Dry-run mode: show what would happen but don't execute
     if dry_run {
-        return Ok(format!(
-            "DRY RUN - Would deactivate plan:\n\
-             Plan PDA: {}\n\
-             Plan ID: {}\n\
-             Current Status: Active\n\
-             New Status: Inactive\n\
-             \n\
-             Note: This was a dry run. No changes were made.\n\
-             Remove --dry-run flag to execute the deactivation.",
-            plan_pda,
-            plan.plan_id_str()
-        ));
+        let mut output = String::new();
+        writeln!(&mut output, "{}", Theme::warning("DRY RUN - Would deactivate plan:"))?;
+        writeln!(&mut output)?;
+        writeln!(&mut output, "{} {}", Theme::info("Plan PDA:"), Theme::highlight(&plan_pda.to_string()))?;
+        writeln!(&mut output, "{} {}", Theme::info("Plan ID:"), Theme::value(&plan.plan_id_str()))?;
+        writeln!(&mut output, "{} {}", Theme::info("Current Status:"), Theme::active("Active"))?;
+        writeln!(&mut output, "{} {}", Theme::info("New Status:"), Theme::inactive("Inactive"))?;
+        writeln!(&mut output)?;
+        writeln!(&mut output, "{}", Theme::dim("Note: This was a dry run. No changes were made."))?;
+        write!(&mut output, "{}", Theme::dim("Remove --dry-run flag to execute the deactivation."))?;
+        return Ok(output);
     }
 
     // Confirmation prompt (unless --yes flag is set)
@@ -110,7 +112,7 @@ pub async fn execute(
             .map_err(|e| anyhow!("Failed to read confirmation: {e}"))?;
 
         if !confirmed {
-            return Ok("Plan deactivation canceled by user.".to_string());
+            return Ok(format!("{}", Theme::warning("Plan deactivation canceled by user.")));
         }
     }
 
@@ -145,11 +147,13 @@ pub async fn execute(
 
     info!("Transaction confirmed: {}", signature);
 
-    // Return success message
-    Ok(format!(
-        "Plan deactivated successfully!\nPlan PDA: {}\nPlan ID: {}\nNew Active Status: false\nTransaction: {}",
-        plan_pda,
-        plan.plan_id_str(),
-        signature
-    ))
+    // Return colored success message
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::success("Plan deactivated successfully!"))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{} {}", Theme::info("Plan PDA:"), Theme::highlight(&plan_pda.to_string()))?;
+    writeln!(&mut output, "{} {}", Theme::info("Plan ID:"), Theme::value(&plan.plan_id_str()))?;
+    writeln!(&mut output, "{} {}", Theme::info("New Active Status:"), Theme::inactive("false"))?;
+    write!(&mut output, "{} {}", Theme::info("Transaction:"), Theme::dim(&signature))?;
+    Ok(output)
 }

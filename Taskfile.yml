@@ -1,0 +1,610 @@
+version: "3"
+silent: true
+output: group
+
+vars:
+  # Default configurations
+  RPC_URL: '{{.RPC_URL | default "http://127.0.0.1:8899"}}'
+
+  # TALLY_PROGRAM_ID must be set - no fallbacks
+  PROGRAM_ID:
+    sh: |
+      if [ -z "${TALLY_PROGRAM_ID}" ]; then
+        echo "ERROR: TALLY_PROGRAM_ID environment variable is not set" >&2
+        echo "Please export it in your shell or add to .env.local" >&2
+        echo "Example: export TALLY_PROGRAM_ID=eUV3U3e6zdQRXmAJFrvEFF9qEdWvjnQMA9BRxJef4d7" >&2
+        exit 1
+      fi
+      echo "${TALLY_PROGRAM_ID}"
+
+  # Dynamic USDC_MINT from environment or .env.local
+  USDC_MINT:
+    sh: 'test -n "${USDC_MINT}" && echo "${USDC_MINT}" || { MINT=$(grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2); test -n "$MINT" && echo "$MINT" || echo ""; }'
+
+  # Merchant PDA from .env.local
+  MERCHANT_PDA:
+    sh: 'grep "MERCHANT_PDA=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2 || echo ""'
+
+  # Tool paths
+  CARGO: '{{.CARGO | default "cargo"}}'
+  SOLANA_CLI: '{{.SOLANA_CLI | default "solana"}}'
+
+  # Binary name
+  BIN_NAME: "tally-merchant"
+
+  # Default output format
+  OUTPUT_FORMAT: '{{.OUTPUT_FORMAT | default "human"}}'
+
+dotenv: [".env.local", ".env"]
+
+tasks:
+  # =============================================================================
+  # BUILD TASKS
+  # =============================================================================
+
+  build:
+    desc: "Build CLI in debug mode"
+    sources:
+      - "src/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+    generates:
+      - "target/debug/{{.BIN_NAME}}"
+    cmds:
+      - |
+        echo "🔨 Building tally-cli (debug)..."
+        {{.CARGO}} build
+        echo "✅ CLI built successfully"
+
+  build:release:
+    desc: "Build CLI in release mode with optimizations"
+    sources:
+      - "src/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+    generates:
+      - "target/release/{{.BIN_NAME}}"
+    cmds:
+      - |
+        echo "🚀 Building tally-cli (release)..."
+        {{.CARGO}} build --release
+        echo "✅ Release build complete"
+
+  build:check:
+    desc: "Check compilation without building"
+    cmds:
+      - |
+        echo "🔍 Checking compilation..."
+        {{.CARGO}} check
+        echo "✅ Compilation check passed"
+
+  # =============================================================================
+  # TESTING
+  # =============================================================================
+
+  test:
+    desc: "Run all tests with cargo nextest (preferred)"
+    deps: [build]
+    cmds:
+      - |
+        echo "🧪 Running tests with nextest..."
+        if command -v cargo-nextest >/dev/null 2>&1; then
+          {{.CARGO}} nextest run
+        else
+          echo "⚠️  cargo-nextest not found, using standard cargo test"
+          echo "   Install with: cargo install cargo-nextest"
+          {{.CARGO}} test
+        fi
+        echo "✅ All tests passed"
+
+  test:cargo:
+    desc: "Run tests with standard cargo test"
+    deps: [build]
+    cmds:
+      - |
+        echo "🧪 Running tests with cargo test..."
+        {{.CARGO}} test
+        echo "✅ All tests passed"
+
+  test:unit:
+    desc: "Run only unit tests"
+    cmds:
+      - |
+        echo "🧪 Running unit tests..."
+        {{.CARGO}} test --lib
+        echo "✅ Unit tests passed"
+
+  test:integration:
+    desc: "Run only integration tests"
+    cmds:
+      - |
+        echo "🧪 Running integration tests..."
+        {{.CARGO}} test --test '*'
+        echo "✅ Integration tests passed"
+
+  test:watch:
+    desc: "Run tests in watch mode (requires cargo-watch)"
+    cmds:
+      - |
+        if ! command -v cargo-watch >/dev/null 2>&1; then
+          echo "❌ cargo-watch not found"
+          echo "   Install with: cargo install cargo-watch"
+          exit 1
+        fi
+        echo "👀 Running tests in watch mode..."
+        cargo watch -x test
+
+  # =============================================================================
+  # CODE QUALITY
+  # =============================================================================
+
+  lint:
+    desc: "Run clippy lints (must pass with zero warnings)"
+    cmds:
+      - |
+        echo "🔍 Running clippy lints..."
+        {{.CARGO}} clippy --all-targets --all-features -- -D warnings
+        echo "✅ Clippy checks passed"
+
+  lint:fix:
+    desc: "Auto-fix clippy issues"
+    cmds:
+      - |
+        echo "🔧 Auto-fixing clippy issues..."
+        {{.CARGO}} clippy --all-targets --all-features --fix --allow-dirty --allow-staged
+        echo "✅ Clippy fixes applied"
+
+  format:
+    desc: "Format code with rustfmt"
+    cmds:
+      - |
+        echo "📐 Formatting code..."
+        {{.CARGO}} fmt --all
+        echo "✅ Code formatted"
+
+  format:check:
+    desc: "Check code formatting without modifying"
+    cmds:
+      - |
+        echo "📏 Checking code formatting..."
+        {{.CARGO}} fmt --all -- --check
+        echo "✅ Code formatting is correct"
+
+  qa:
+    desc: "Run full QA pipeline (format, lint, test)"
+    cmds:
+      - task: format:check
+      - task: lint
+      - task: test
+      - echo "✅ Full QA pipeline passed"
+
+  qa:fix:
+    desc: "Auto-fix all QA issues"
+    cmds:
+      - task: format
+      - task: lint:fix
+      - echo "✅ QA fixes applied"
+
+  # =============================================================================
+  # ENVIRONMENT SETUP
+  # =============================================================================
+
+  env:check:
+    desc: "Validate environment configuration"
+    cmds:
+      - |
+        echo "🌍 Checking environment configuration..."
+
+        # Check TALLY_PROGRAM_ID
+        if [ -z "${TALLY_PROGRAM_ID}" ]; then
+          echo "❌ TALLY_PROGRAM_ID not set"
+          echo "   Export it: export TALLY_PROGRAM_ID=<your-program-id>"
+          exit 1
+        fi
+        echo "✅ TALLY_PROGRAM_ID: ${TALLY_PROGRAM_ID}"
+
+        # Check RPC connectivity
+        if {{.SOLANA_CLI}} cluster-version --url {{.RPC_URL}} >/dev/null 2>&1; then
+          echo "✅ RPC accessible: {{.RPC_URL}}"
+        else
+          echo "⚠️  RPC not accessible: {{.RPC_URL}}"
+          echo "   Make sure validator is running for localnet"
+        fi
+
+        # Check wallet
+        WALLET=$({{.SOLANA_CLI}} address 2>/dev/null || echo "")
+        if [ -n "$WALLET" ]; then
+          BALANCE=$({{.SOLANA_CLI}} balance --url {{.RPC_URL}} 2>/dev/null || echo "0")
+          echo "✅ Wallet: $WALLET"
+          echo "✅ Balance: $BALANCE"
+        else
+          echo "⚠️  No wallet configured"
+        fi
+
+        # Check .env.local
+        if [ -f .env.local ]; then
+          echo "✅ .env.local found"
+          if [ -n "{{.USDC_MINT}}" ]; then
+            echo "✅ USDC_MINT: {{.USDC_MINT}}"
+          else
+            echo "⚠️  USDC_MINT not set in .env.local"
+          fi
+          if [ -n "{{.MERCHANT_PDA}}" ]; then
+            echo "✅ MERCHANT_PDA: {{.MERCHANT_PDA}}"
+          else
+            echo "⚠️  MERCHANT_PDA not set in .env.local"
+          fi
+        else
+          echo "⚠️  .env.local not found (will be created during setup)"
+        fi
+
+        echo ""
+        echo "✅ Environment check complete"
+
+  env:show:
+    desc: "Show current environment configuration"
+    cmds:
+      - |
+        echo "🌍 Current Environment Configuration:"
+        echo ""
+        echo "RPC_URL: {{.RPC_URL}}"
+        echo "PROGRAM_ID: {{.PROGRAM_ID}}"
+        echo "USDC_MINT: {{.USDC_MINT}}"
+        echo "MERCHANT_PDA: {{.MERCHANT_PDA}}"
+        echo "OUTPUT_FORMAT: {{.OUTPUT_FORMAT}}"
+        echo ""
+        echo "Wallet: $({{.SOLANA_CLI}} address 2>/dev/null || echo 'Not configured')"
+        echo "Balance: $({{.SOLANA_CLI}} balance --url {{.RPC_URL}} 2>/dev/null || echo 'N/A')"
+
+  env:create:
+    desc: "Create .env.local template"
+    status:
+      - test -f .env.local
+    cmds:
+      - |
+        echo "📝 Creating .env.local template..."
+        cat > .env.local << 'EOF'
+        # Tally CLI Environment Configuration
+
+        # RPC endpoint (localnet, devnet, mainnet)
+        RPC_URL=http://127.0.0.1:8899
+
+        # Tally program ID (required)
+        # Localnet: eUV3U3e6zdQRXmAJFrvEFF9qEdWvjnQMA9BRxJef4d7
+        # Devnet: 6jsdZp5TovWbPGuXcKvnNaBZr1EBYwVTWXW1RhGa2JM5
+        # TALLY_PROGRAM_ID=
+
+        # USDC mint address (set by dev:usdc:setup)
+        # USDC_MINT=
+
+        # USDC associated token account (set by dev:usdc:setup)
+        # USDC_ATA=
+
+        # Merchant PDA (set by localnet:merchant:init)
+        # MERCHANT_PDA=
+
+        # Output format (human, json, csv)
+        # OUTPUT_FORMAT=human
+        EOF
+        echo "✅ .env.local template created"
+        echo "   Edit this file to configure your environment"
+
+  # =============================================================================
+  # LOCALNET SETUP & TESTING
+  # =============================================================================
+
+  localnet:check:
+    desc: "Check if localnet validator is running"
+    cmds:
+      - |
+        echo "🔍 Checking localnet validator..."
+        if {{.SOLANA_CLI}} cluster-version --url {{.RPC_URL}} >/dev/null 2>&1; then
+          SLOT=$({{.SOLANA_CLI}} slot --url {{.RPC_URL}})
+          echo "✅ Validator running (slot: $SLOT)"
+        else
+          echo "❌ Validator not running"
+          echo "   Start it with: cd ../tally-platform && task dev:validator:start-bg"
+          exit 1
+        fi
+
+  localnet:fund:
+    desc: "Airdrop SOL to current wallet on localnet"
+    deps: [localnet:check]
+    cmds:
+      - |
+        echo "💰 Airdropping SOL to wallet..."
+        WALLET=$({{.SOLANA_CLI}} address)
+        {{.SOLANA_CLI}} airdrop 10 --url {{.RPC_URL}}
+        BALANCE=$({{.SOLANA_CLI}} balance --url {{.RPC_URL}})
+        echo "✅ Wallet funded: $WALLET"
+        echo "   Balance: $BALANCE"
+
+  localnet:config:show:
+    desc: "Show global program config on localnet"
+    deps: [build, localnet:check]
+    cmds:
+      - |
+        echo "🔍 Showing program config on localnet..."
+        {{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          config show
+        echo "✅ Config displayed"
+
+  localnet:merchant:init:
+    desc: "Initialize merchant on localnet and save to .env.local"
+    deps: [build, localnet:check]
+    cmds:
+      - |
+        echo "🏪 Initializing merchant on localnet..."
+
+        # Check for USDC_MINT
+        if [ -z "{{.USDC_MINT}}" ]; then
+          echo "❌ USDC_MINT not set in .env.local"
+          echo "   Run: cd ../tally-platform && task dev:usdc:setup"
+          exit 1
+        fi
+
+        # Read USDC_ATA
+        USDC_ATA=$(grep "USDC_ATA=" .env.local 2>/dev/null | tail -1 | cut -d'=' -f2)
+        if [ -z "$USDC_ATA" ]; then
+          echo "❌ USDC_ATA not set in .env.local"
+          echo "   Run: cd ../tally-platform && task dev:usdc:setup"
+          exit 1
+        fi
+
+        # Initialize merchant
+        OUTPUT=$({{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          merchant init \
+          --treasury "$USDC_ATA")
+
+        echo "$OUTPUT"
+
+        # Extract and save merchant PDA (look for "Merchant PDA:" line)
+        MERCHANT_PDA=$(echo "$OUTPUT" | grep "Merchant PDA:" | awk '{print $3}')
+        if [ -n "$MERCHANT_PDA" ]; then
+          # Remove old MERCHANT_PDA if exists
+          if [ -f .env.local ]; then
+            grep -v "^MERCHANT_PDA=" .env.local > .env.local.tmp || true
+            mv .env.local.tmp .env.local
+          fi
+          echo "MERCHANT_PDA=$MERCHANT_PDA" >> .env.local
+          echo "✅ Merchant initialized and saved to .env.local"
+          echo "   PDA: $MERCHANT_PDA"
+        else
+          echo "⚠️  Could not extract merchant PDA from output"
+        fi
+
+  localnet:plan:create:
+    desc: "Create a subscription plan on localnet"
+    deps: [build, localnet:check]
+    cmds:
+      - |
+        echo "📋 Creating subscription plan on localnet..."
+
+        # Validate environment
+        if [ -z "{{.MERCHANT_PDA}}" ]; then
+          echo "❌ MERCHANT_PDA not set in .env.local"
+          echo "   Run: task localnet:merchant:init"
+          exit 1
+        fi
+
+        if [ -z "{{.USDC_MINT}}" ]; then
+          echo "❌ USDC_MINT not set in .env.local"
+          exit 1
+        fi
+
+        # Plan parameters (can be overridden via env vars)
+        PLAN_ID={{.PLAN_ID | default "basic"}}
+        PLAN_NAME="{{.PLAN_NAME | default "Basic Plan"}}"
+        PLAN_PRICE_USDC={{.PLAN_PRICE_USDC | default "5.0"}}
+        PLAN_PERIOD_MONTHS={{.PLAN_PERIOD_MONTHS | default "1"}}
+        PLAN_GRACE_DAYS={{.PLAN_GRACE_DAYS | default "5"}}
+
+        echo "   Plan ID: $PLAN_ID"
+        echo "   Name: $PLAN_NAME"
+        echo "   Price: \$${PLAN_PRICE_USDC} USDC"
+        echo "   Period: ${PLAN_PERIOD_MONTHS} month(s)"
+        echo "   Grace: ${PLAN_GRACE_DAYS} day(s)"
+        echo ""
+
+        {{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          plan create \
+          --merchant {{.MERCHANT_PDA}} \
+          --id "$PLAN_ID" \
+          --name "$PLAN_NAME" \
+          --price-usdc "$PLAN_PRICE_USDC" \
+          --period-months "$PLAN_PERIOD_MONTHS" \
+          --grace-days "$PLAN_GRACE_DAYS"
+
+        echo "✅ Plan created successfully"
+
+  localnet:plans:list:
+    desc: "List all plans for the merchant on localnet"
+    deps: [build, localnet:check]
+    cmds:
+      - |
+        echo "📋 Listing plans on localnet..."
+
+        if [ -z "{{.MERCHANT_PDA}}" ]; then
+          echo "❌ MERCHANT_PDA not set in .env.local"
+          echo "   Run: task localnet:merchant:init"
+          exit 1
+        fi
+
+        {{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --output {{.OUTPUT_FORMAT}} \
+          plan list \
+          --merchant {{.MERCHANT_PDA}}
+
+  localnet:dashboard:
+    desc: "Show dashboard overview for merchant on localnet"
+    deps: [build, localnet:check]
+    cmds:
+      - |
+        echo "📊 Dashboard Overview (localnet):"
+        echo ""
+
+        if [ -z "{{.MERCHANT_PDA}}" ]; then
+          echo "❌ MERCHANT_PDA not set in .env.local"
+          echo "   Run: task localnet:merchant:init"
+          exit 1
+        fi
+
+        if [ -z "{{.USDC_MINT}}" ]; then
+          echo "❌ USDC_MINT not set in .env.local"
+          exit 1
+        fi
+
+        {{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          dashboard overview \
+          --merchant {{.MERCHANT_PDA}}
+
+  localnet:setup:
+    desc: "Complete localnet setup workflow (merchant init)"
+    cmds:
+      - task: env:check
+      - task: localnet:check
+      - task: localnet:fund
+      - task: localnet:merchant:init
+      - |
+        echo ""
+        echo "✅ Localnet setup complete!"
+        echo "   You can now create plans with: task localnet:plan:create"
+
+  localnet:demo:
+    desc: "Run complete demo workflow on localnet"
+    cmds:
+      - task: localnet:setup
+      - task: localnet:plan:create
+      - task: localnet:plans:list
+      - task: localnet:dashboard
+      - echo ""
+      - echo "✅ Demo complete!"
+
+  # =============================================================================
+  # CLI COMMANDS (Generic wrappers)
+  # =============================================================================
+
+  run:
+    desc: "Run CLI with custom arguments (use -- to pass args)"
+    deps: [build]
+    cmds:
+      - |
+        {{.CARGO}} run -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          {{.CLI_ARGS}}
+
+  help:
+    desc: "Show CLI help"
+    deps: [build]
+    cmds:
+      - "{{.CARGO}} run -- --help"
+
+  # =============================================================================
+  # CLEANUP
+  # =============================================================================
+
+  clean:
+    desc: "Clean build artifacts"
+    cmds:
+      - |
+        echo "🧹 Cleaning build artifacts..."
+        {{.CARGO}} clean
+        echo "✅ Clean complete"
+
+  clean:env:
+    desc: "Remove .env.local (warning: destructive)"
+    cmds:
+      - |
+        if [ -f .env.local ]; then
+          echo "⚠️  Removing .env.local..."
+          rm .env.local
+          echo "✅ .env.local removed"
+        else
+          echo "✅ .env.local does not exist"
+        fi
+
+  # =============================================================================
+  # UTILITIES
+  # =============================================================================
+
+  version:
+    desc: "Show version information"
+    cmds:
+      - |
+        echo "📋 Version Information:"
+        echo "CLI: $({{.CARGO}} pkgid | cut -d'#' -f2)"
+        echo "Rust: $({{.CARGO}} --version)"
+        echo "Solana: $({{.SOLANA_CLI}} --version)"
+
+  deps:install:
+    desc: "Install required development dependencies"
+    cmds:
+      - |
+        echo "📦 Installing development dependencies..."
+
+        # Check and install cargo-nextest
+        if ! command -v cargo-nextest >/dev/null 2>&1; then
+          echo "Installing cargo-nextest..."
+          {{.CARGO}} install cargo-nextest
+        else
+          echo "✅ cargo-nextest already installed"
+        fi
+
+        # Check and install cargo-watch
+        if ! command -v cargo-watch >/dev/null 2>&1; then
+          echo "Installing cargo-watch..."
+          {{.CARGO}} install cargo-watch
+        else
+          echo "✅ cargo-watch already installed"
+        fi
+
+        echo "✅ All dependencies installed"
+
+  # =============================================================================
+  # DEFAULT TASK
+  # =============================================================================
+
+  default:
+    desc: "Show help and available tasks"
+    cmds:
+      - |
+        echo "🎯 Tally CLI - Command Line Interface"
+        echo "======================================"
+        echo ""
+      - task: version
+      - task: env:show
+      - |
+        echo ""
+        echo "🚀 Quick Start (Localnet):"
+        echo "  task localnet:setup    - Complete localnet setup"
+        echo "  task localnet:demo     - Run full demo workflow"
+        echo ""
+        echo "📋 Common Tasks:"
+        echo "  task build             - Build CLI in debug mode"
+        echo "  task test              - Run all tests"
+        echo "  task qa                - Run full QA pipeline"
+        echo "  task env:check         - Validate environment"
+        echo ""
+        echo "🔧 Localnet Operations:"
+        echo "  task localnet:check           - Check validator status"
+        echo "  task localnet:config:show     - Show program config"
+        echo "  task localnet:merchant:init   - Initialize merchant"
+        echo "  task localnet:plan:create     - Create subscription plan"
+        echo "  task localnet:plans:list      - List all plans"
+        echo "  task localnet:dashboard       - Show dashboard"
+        echo ""
+        echo "📚 For all tasks run: task --list"

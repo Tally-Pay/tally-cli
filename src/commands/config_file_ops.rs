@@ -1,6 +1,7 @@
 //! Config file operations command handlers
 
 use crate::config_file::{ConfigFile, ProfileConfig};
+use crate::utils::colors::Theme;
 use anyhow::{Context, Result};
 use std::fmt::Write;
 
@@ -26,18 +27,17 @@ pub fn init(force: bool) -> Result<String> {
     let config = ConfigFile::new();
     config.save()?;
 
-    Ok(format!(
-        "✓ Config file initialized at: {}\n\
-         \n\
-         Default profiles created:\n\
-         • devnet (active)\n\
-         • mainnet\n\
-         • localnet\n\
-         \n\
-         Use 'tally-merchant config list' to view configuration\n\
-         Use 'tally-merchant config set <key> <value>' to customize",
-        path.display()
-    ))
+    let mut output = String::new();
+    writeln!(&mut output, "{} Config file initialized at: {}", Theme::success("✓"), Theme::value(&path.display().to_string()))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{}", Theme::header("Default profiles created:"))?;
+    writeln!(&mut output, "  {} {}", Theme::dim("•"), Theme::active("devnet (active)"))?;
+    writeln!(&mut output, "  {} mainnet", Theme::dim("•"))?;
+    writeln!(&mut output, "  {} localnet", Theme::dim("•"))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{}", Theme::dim("Use 'tally-merchant config list' to view configuration"))?;
+    write!(&mut output, "{}", Theme::dim("Use 'tally-merchant config set <key> <value>' to customize"))?;
+    Ok(output)
 }
 
 /// List all configuration values
@@ -63,43 +63,35 @@ pub fn list(profile_name: Option<&str>) -> Result<String> {
         .or_else(|| config.defaults.active_profile.clone())
         .unwrap_or_else(|| "unknown".to_string());
 
-    let mut output = format!("Configuration (profile: {profile_name_display})\n");
-    output.push_str(&"=".repeat(50));
-    output.push('\n');
+    let mut output = String::new();
+    writeln!(&mut output, "{} (profile: {})", Theme::header("Configuration"), Theme::highlight(&profile_name_display))?;
+    writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
 
-    writeln!(output, "RPC URL:       {}", profile_to_show.rpc_url)?;
-    writeln!(
-        output,
-        "Program ID:    {}",
-        profile_to_show
-            .program_id
-            .as_ref()
-            .map_or("(not set)", String::as_str)
-    )?;
-    writeln!(
-        output,
-        "USDC Mint:     {}",
-        profile_to_show
-            .usdc_mint
-            .as_ref()
-            .map_or("(not set)", String::as_str)
-    )?;
-    writeln!(
-        output,
-        "Merchant:      {}",
-        profile_to_show
-            .merchant
-            .as_ref()
-            .map_or("(not set)", String::as_str)
-    )?;
-    writeln!(
-        output,
-        "Wallet Path:   {}",
-        profile_to_show
-            .wallet_path
-            .as_ref()
-            .map_or("(default)", String::as_str)
-    )?;
+    writeln!(&mut output, "{:<15} {}", Theme::info("RPC URL:"), Theme::value(&profile_to_show.rpc_url))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("Program ID:"),
+        profile_to_show.program_id.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::value(v)
+        ))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("USDC Mint:"),
+        profile_to_show.usdc_mint.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::dim(v)
+        ))?;
+    writeln!(&mut output, "{:<15} {}",
+        Theme::info("Merchant:"),
+        profile_to_show.merchant.as_ref().map_or_else(
+            || Theme::dim("(not set)"),
+            |v| Theme::highlight(v)
+        ))?;
+    write!(&mut output, "{:<15} {}",
+        Theme::info("Wallet Path:"),
+        profile_to_show.wallet_path.as_ref().map_or_else(
+            || Theme::dim("(default)"),
+            |v| Theme::value(v)
+        ))?;
 
     Ok(output)
 }
@@ -157,7 +149,11 @@ pub fn set(key: &str, value: &str, profile_name: Option<&str>) -> Result<String>
         .unwrap_or_else(|| "unknown".to_string());
 
     Ok(format!(
-        "✓ Set {key} = {value} (profile: {profile_display})"
+        "{} Set {} = {} (profile: {})",
+        Theme::success("✓"),
+        Theme::info(key),
+        Theme::value(value),
+        Theme::highlight(&profile_display)
     ))
 }
 
@@ -179,23 +175,28 @@ pub fn path() -> Result<String> {
 pub fn list_profiles() -> Result<String> {
     let config = ConfigFile::load()?;
 
-    let mut output = String::from("Available Profiles:\n");
-    output.push_str(&"=".repeat(50));
-    output.push('\n');
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::header("Available Profiles:"))?;
+    writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
 
     let active_profile = config.defaults.active_profile.as_deref();
 
     for (name, profile) in &config.profiles {
         let is_active = active_profile == Some(name.as_str());
-        let marker = if is_active { " (active)" } else { "" };
+        let name_display = if is_active {
+            format!("{} {}", Theme::highlight(name), Theme::active("(active)"))
+        } else {
+            Theme::value(name).to_string()
+        };
 
-        writeln!(output, "\n{name}{marker}")?;
-        writeln!(output, "  RPC URL: {}", profile.rpc_url)?;
+        writeln!(&mut output)?;
+        writeln!(&mut output, "{name_display}")?;
+        writeln!(&mut output, "  {}: {}", Theme::dim("RPC URL"), profile.rpc_url)?;
         if let Some(ref program_id) = profile.program_id {
-            writeln!(output, "  Program ID: {program_id}")?;
+            writeln!(&mut output, "  {}: {}", Theme::dim("Program ID"), Theme::dim(program_id))?;
         }
         if let Some(ref merchant) = profile.merchant {
-            writeln!(output, "  Merchant: {merchant}")?;
+            writeln!(&mut output, "  {}: {}", Theme::dim("Merchant"), Theme::highlight(merchant))?;
         }
     }
 
@@ -241,7 +242,7 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
     config.set_active_profile(profile_name.to_string());
     config.save()?;
 
-    Ok(format!("✓ Active profile set to: {profile_name}"))
+    Ok(format!("{} Active profile set to: {}", Theme::success("✓"), Theme::highlight(profile_name)))
 }
 
 /// Create a new profile
@@ -277,12 +278,12 @@ pub fn create_profile(
     config.profiles.insert(name.to_string(), profile);
     config.save()?;
 
-    Ok(format!(
-        "✓ Profile '{name}' created with:\n\
-         • RPC URL: {rpc_url}\n\
-         \n\
-         Use 'tally-merchant config profile use {name}' to activate"
-    ))
+    let mut output = String::new();
+    writeln!(&mut output, "{} Profile '{}' created with:", Theme::success("✓"), Theme::highlight(name))?;
+    writeln!(&mut output, "  {} RPC URL: {}", Theme::dim("•"), Theme::value(rpc_url))?;
+    writeln!(&mut output)?;
+    write!(&mut output, "{}", Theme::dim(&format!("Use 'tally-merchant config profile use {name}' to activate")))?;
+    Ok(output)
 }
 
 #[cfg(test)]

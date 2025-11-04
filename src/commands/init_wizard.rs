@@ -9,6 +9,7 @@
 
 use crate::config::TallyCliConfig;
 use crate::errors::enhance_merchant_init_error;
+use crate::utils::formatting::detect_network;
 use crate::utils::progress;
 use anyhow::{anyhow, Context, Result};
 use dialoguer::{Confirm, Input, Select};
@@ -49,11 +50,13 @@ pub async fn execute(
     println!("\nRunning pre-flight checks...\n");
 
     // Check RPC connectivity
+    let rpc_url = tally_client.rpc_client.url();
+    let network = detect_network(&rpc_url);
     print!("Checking RPC connection... ");
     tally_client
         .get_health()
         .context("Failed to connect to RPC endpoint")?;
-    println!("✓ connected");
+    println!("✓ connected to {network}");
 
     // Check wallet balance with recovery flow
     println!("Checking wallet balance for {}...", wallet.pubkey());

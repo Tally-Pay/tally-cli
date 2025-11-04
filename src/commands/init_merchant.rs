@@ -3,7 +3,9 @@
 use crate::config::TallyCliConfig;
 use crate::config_file::ConfigFile;
 use crate::errors::enhance_merchant_init_error;
+use crate::utils::colors::Theme;
 use anyhow::{anyhow, Result};
+use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
@@ -51,29 +53,45 @@ pub async fn execute(
 
     // Save merchant PDA to config file for future use
     let config_save_result = save_merchant_to_config(&merchant_pda);
-    let config_message = match config_save_result {
-        Ok(profile_name) => format!("\n✓ Merchant PDA saved to config (profile: {profile_name})"),
-        Err(e) => format!("\n⚠ Could not save merchant PDA to config: {e}"),
-    };
 
-    // Return success message with merchant PDA, transaction signature, and ATA creation info
-    let ata_message = if created_ata {
-        "Treasury ATA created and merchant initialized"
+    // Build colored output
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::success("Merchant initialization successful!"))?;
+
+    // Show ATA creation status
+    if created_ata {
+        writeln!(&mut output, "{}", Theme::info("Treasury ATA created and merchant initialized"))?;
     } else {
-        "Merchant initialized with existing treasury ATA"
-    };
+        writeln!(&mut output, "{}", Theme::info("Merchant initialized with existing treasury ATA"))?;
+    }
 
-    Ok(format!(
-        "Merchant initialization successful!\n{}\nMerchant PDA: {}\nTransaction signature: {}\nAuthority: {}\nTreasury ATA: {}\nTier: Free (platform fee: 200 bps / 2.0%)\n\n\
-        Note: New merchants start on the Free tier.\n\
-        Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers.{}",
-        ata_message,
-        merchant_pda,
-        signature,
-        authority.pubkey(),
-        treasury_ata,
-        config_message
-    ))
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{} {}", Theme::info("Merchant PDA:"), Theme::highlight(&merchant_pda.to_string()))?;
+    writeln!(&mut output, "{} {}", Theme::info("Transaction signature:"), Theme::dim(&signature))?;
+    writeln!(&mut output, "{} {}", Theme::info("Authority:"), Theme::value(&authority.pubkey().to_string()))?;
+    writeln!(&mut output, "{} {}", Theme::info("Treasury ATA:"), Theme::value(&treasury_ata.to_string()))?;
+    writeln!(&mut output, "{} {} (platform fee: 200 bps / 2.0%)", Theme::info("Tier:"), Theme::active("Free"))?;
+
+    // Config save message
+    match config_save_result {
+        Ok(profile_name) => {
+            writeln!(&mut output)?;
+            writeln!(&mut output, "{} Merchant PDA saved to config (profile: {})",
+                Theme::success("✓"), Theme::value(&profile_name))?;
+        }
+        Err(e) => {
+            writeln!(&mut output)?;
+            writeln!(&mut output, "{} Could not save merchant PDA to config: {}",
+                Theme::warning("⚠"), Theme::dim(&e.to_string()))?;
+        }
+    }
+
+    // Note about tiers
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{}", Theme::dim("Note: New merchants start on the Free tier."))?;
+    write!(&mut output, "{}", Theme::dim("Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers."))?;
+
+    Ok(output)
 }
 
 /// Save merchant PDA to config file

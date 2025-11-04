@@ -1,7 +1,9 @@
 //! Update plan terms command implementation
 
 use crate::config::TallyCliConfig;
+use crate::utils::colors::Theme;
 use anyhow::{anyhow, Context, Result};
+use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::solana_sdk::signature::Signer;
@@ -115,37 +117,42 @@ pub async fn execute(
 
     info!("Transaction confirmed: {}", signature);
 
-    // Build success message with updated fields
-    let mut updates = Vec::new();
+    // Build colored success message with updated fields
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::success("Plan terms updated successfully!"))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{} {}", Theme::info("Plan:"), Theme::highlight(&plan.to_string()))?;
+    writeln!(&mut output, "{} {}", Theme::info("Transaction signature:"), Theme::dim(&signature))?;
+    writeln!(&mut output)?;
+    writeln!(&mut output, "{}", Theme::header("Updated fields:"))?;
 
     if let Some(price) = request.new_price {
         let price_usdc = config.format_usdc(price);
-        updates.push(format!("Price: {price_usdc:.6} USDC ({price} micro-units)"));
+        writeln!(&mut output, "  {} {:.6} USDC ({} micro-units)",
+            Theme::info("• Price:"),
+            price_usdc,
+            Theme::value(&price.to_string()))?;
     }
 
     if let Some(period) = request.new_period_seconds {
         let period_days = period / 86400;
         let period_hours = (period % 86400) / 3600;
-        updates.push(format!(
-            "Period: {period} seconds (~{period_days} days, {period_hours} hours)"
-        ));
+        writeln!(&mut output, "  {} {} seconds (~{} days, {} hours)",
+            Theme::info("• Period:"),
+            Theme::value(&period.to_string()),
+            period_days,
+            period_hours)?;
     }
 
     if let Some(grace) = request.new_grace_period_seconds {
         let grace_hours = grace / 3600;
-        updates.push(format!(
-            "Grace period: {grace} seconds ({grace_hours} hours)"
-        ));
+        write!(&mut output, "  {} {} seconds ({} hours)",
+            Theme::info("• Grace period:"),
+            Theme::value(&grace.to_string()),
+            grace_hours)?;
     }
 
-    let updates_str = updates.join("\n  ");
-
-    Ok(format!(
-        "Plan terms updated successfully!\n\
-        Plan: {plan}\n\
-        Transaction signature: {signature}\n\
-        Updated fields:\n  {updates_str}"
-    ))
+    Ok(output)
 }
 
 #[cfg(test)]

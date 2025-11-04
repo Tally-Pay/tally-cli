@@ -3,6 +3,7 @@
 //! This module contains the individual command implementations, each in their own file
 //! for better organization and maintainability.
 
+pub mod completions;
 pub mod config_file_ops;
 pub mod create_plan;
 pub mod dashboard;

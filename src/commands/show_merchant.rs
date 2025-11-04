@@ -1,7 +1,9 @@
 //! Show merchant account details
 
 use crate::config::TallyCliConfig;
+use crate::utils::colors::Theme;
 use anyhow::{Context, Result};
+use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
 use tally_sdk::SimpleTallyClient;
@@ -60,28 +62,24 @@ pub async fn execute(
         });
         Ok(serde_json::to_string_pretty(&json_output)?)
     } else {
-        // Human-readable output
-        Ok(format!(
-            "Merchant Account Details
-========================
-Merchant PDA:      {}
-Authority:         {}
-USDC Mint:         {}
-Treasury ATA:      {}
-Platform Fee:      {} ({})
-Tier:              {} ({})
-Bump:              {}
-",
-            request.merchant,
-            merchant.authority,
-            merchant.usdc_mint,
-            merchant.treasury_ata,
+        // Human-readable output with colors
+        let mut output = String::new();
+        writeln!(&mut output, "{}", Theme::header("Merchant Account Details"))?;
+        writeln!(&mut output, "{}", Theme::dim("========================"))?;
+        writeln!(&mut output, "{:<18} {}", Theme::info("Merchant PDA:"), Theme::highlight(request.merchant))?;
+        writeln!(&mut output, "{:<18} {}", Theme::info("Authority:"), Theme::value(&merchant.authority.to_string()))?;
+        writeln!(&mut output, "{:<18} {}", Theme::info("USDC Mint:"), Theme::dim(&merchant.usdc_mint.to_string()))?;
+        writeln!(&mut output, "{:<18} {}", Theme::info("Treasury ATA:"), Theme::value(&merchant.treasury_ata.to_string()))?;
+        writeln!(&mut output, "{:<18} {} bps ({}%)",
+            Theme::info("Platform Fee:"),
             merchant.platform_fee_bps,
-            config.format_fee_percentage(merchant.platform_fee_bps),
+            Theme::value(&config.format_fee_percentage(merchant.platform_fee_bps).to_string()))?;
+        writeln!(&mut output, "{:<18} {} ({})",
+            Theme::info("Tier:"),
             merchant.tier,
-            tier_name(merchant.tier),
-            merchant.bump,
-        ))
+            Theme::active(tier_name(merchant.tier)))?;
+        write!(&mut output, "{:<18} {}", Theme::info("Bump:"), Theme::dim(&merchant.bump.to_string()))?;
+        Ok(output)
     }
 }
 

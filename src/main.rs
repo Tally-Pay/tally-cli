@@ -24,7 +24,7 @@ use tally_sdk::SimpleTallyClient;
     about = "Command-line interface for the Tally subscription platform",
     author = "Tally Team"
 )]
-struct Cli {
+pub struct Cli {
     /// RPC endpoint URL
     #[arg(long, global = true)]
     rpc_url: Option<String>,
@@ -104,16 +104,45 @@ enum Commands {
         command: DashboardCommands,
     },
 
-    /// Generate shell completions for your shell
-    #[command(long_about = "Generate shell completion scripts for bash, zsh, fish, or PowerShell.\n\n\
+    /// Generate and install shell completions
+    #[command(long_about = "Generate and install shell completion scripts for your shell.\n\n\
+                             By default, this command will guide you through interactive installation.\n\
+                             Use --print to output the completion script for manual installation.\n\n\
                              Examples:\n  \
-                             tally-merchant completions bash > /usr/local/share/bash-completion/completions/tally-merchant\n  \
-                             tally-merchant completions zsh > ~/.zsh/completion/_tally-merchant\n  \
-                             tally-merchant completions fish > ~/.config/fish/completions/tally-merchant.fish")]
+                             # Interactive installation (recommended)\n  \
+                             tally-merchant completions zsh\n\n  \
+                             # Automatic installation (skip prompts)\n  \
+                             tally-merchant completions zsh --install --yes\n\n  \
+                             # Preview installation plan\n  \
+                             tally-merchant completions zsh --dry-run\n\n  \
+                             # Print script for manual installation\n  \
+                             tally-merchant completions zsh --print > ~/.zsh/completions/_tally-merchant\n\n  \
+                             # Uninstall completions\n  \
+                             tally-merchant completions zsh --uninstall")]
     Completions {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+
+        /// Install completions automatically (interactive)
+        #[arg(long)]
+        install: bool,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+
+        /// Print completion script to stdout (for manual installation)
+        #[arg(long)]
+        print: bool,
+
+        /// Show what would be installed without making changes
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Remove installed completions
+        #[arg(long)]
+        uninstall: bool,
     },
 }
 
@@ -831,16 +860,6 @@ fn execute_dashboard_commands(
     commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
 }
 
-/// Generate shell completions for the specified shell
-fn generate_completions(shell: clap_complete::Shell) {
-    use clap::CommandFactory;
-    use clap_complete::generate;
-    use std::io;
-
-    let mut cmd = Cli::command();
-    let bin_name = cmd.get_name().to_string();
-    generate(shell, &mut cmd, bin_name, &mut io::stdout());
-}
 
 /// Main command router
 async fn execute_command(
@@ -872,9 +891,25 @@ async fn execute_command(
             let client = require_client(tally_client)?;
             execute_dashboard_commands(cli, client, config, command)
         }
-        Commands::Completions { shell } => {
-            generate_completions(*shell);
-            Ok(String::new())
+        Commands::Completions {
+            shell,
+            install,
+            yes,
+            print,
+            dry_run,
+            uninstall,
+        } => {
+            use clap::CommandFactory;
+            let args = commands::completions::CompletionsArgs {
+                shell: *shell,
+                install: *install,
+                yes: *yes,
+                print: *print,
+                dry_run: *dry_run,
+                uninstall: *uninstall,
+            };
+            let cmd = Cli::command();
+            commands::completions::execute(&args, cmd)
         }
     }
 }
