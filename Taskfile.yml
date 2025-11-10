@@ -70,6 +70,15 @@ tasks:
         {{.CARGO}} build --release
         echo "✅ Release build complete"
 
+  install:
+    desc: "Build in release mode and install to ~/.cargo/bin"
+    cmds:
+      - echo "📦 Installing {{.BIN_NAME}} to ~/.cargo/bin..."
+      - '{{.CARGO}} install --path .'
+      - echo "✅ Installed successfully!"
+      - echo "   Binary is in ~/.cargo/bin/{{.BIN_NAME}}"
+      - echo "   Run with {{.BIN_NAME}} --help"
+
   build:check:
     desc: "Check compilation without building"
     cmds:
