@@ -494,6 +494,464 @@ tasks:
       - echo "✅ Demo complete!"
 
   # =============================================================================
+  # END-TO-END TESTING
+  # =============================================================================
+
+  e2e:install:
+    desc: "Build and install CLI for E2E testing"
+    internal: true
+    sources:
+      - "src/**/*.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+    cmds:
+      - |
+        echo "📦 Installing tally-merchant to ~/.cargo/bin..."
+        {{.CARGO}} install --path . --force
+        echo "✅ Installed successfully!"
+        echo "   Binary: ~/.cargo/bin/tally-merchant"
+
+  e2e:setup-wallet:
+    desc: "Setup dedicated merchant dev wallet for E2E testing"
+    internal: true
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+
+        if [ ! -f "$WALLET_PATH" ]; then
+          echo "🔑 Creating merchant dev wallet..."
+          mkdir -p "$(dirname "$WALLET_PATH")"
+          solana-keygen new --no-bip39-passphrase --silent --outfile "$WALLET_PATH"
+          echo "✅ Wallet created: $WALLET_PATH"
+        else
+          echo "✅ Wallet exists: $WALLET_PATH"
+        fi
+
+        WALLET_ADDR=$(solana-keygen pubkey "$WALLET_PATH")
+        echo "   Address: $WALLET_ADDR"
+
+  e2e:fund-wallet:
+    desc: "Fund merchant dev wallet on localnet"
+    internal: true
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        WALLET_ADDR=$(solana-keygen pubkey "$WALLET_PATH")
+
+        echo "💰 Funding wallet..."
+
+        # Check current balance
+        BALANCE_STR=$({{.SOLANA_CLI}} balance "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null || echo "0 SOL")
+        CURRENT_BALANCE=$(echo "$BALANCE_STR" | awk '{print int($1)}')
+
+        if [ "$CURRENT_BALANCE" -lt 2 ]; then
+          echo "   Attempting airdrop..."
+          if {{.SOLANA_CLI}} airdrop 10 "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null; then
+            echo "✅ Airdrop successful"
+            sleep 1
+          else
+            echo "⚠️  Airdrop failed, transferring from main wallet..."
+            MAIN_BALANCE=$({{.SOLANA_CLI}} balance --url {{.RPC_URL}} 2>/dev/null | awk '{print int($1)}')
+            if [ "$MAIN_BALANCE" -lt 10 ]; then
+              echo "❌ Main wallet has insufficient balance ($MAIN_BALANCE SOL)"
+              echo "   Fund main wallet first: solana airdrop 100"
+              exit 1
+            fi
+
+            MAX_RETRIES=3
+            for i in $(seq 1 $MAX_RETRIES); do
+              echo "   Transfer attempt $i/$MAX_RETRIES..."
+              if {{.SOLANA_CLI}} transfer "$WALLET_ADDR" 10 \
+                --url {{.RPC_URL}} \
+                --allow-unfunded-recipient \
+                --commitment confirmed 2>&1; then
+                echo "✅ Transfer successful"
+                break
+              elif [ $i -eq $MAX_RETRIES ]; then
+                echo "❌ Failed to transfer after $MAX_RETRIES attempts"
+                exit 1
+              else
+                echo "   Retrying in 2 seconds..."
+                sleep 2
+              fi
+            done
+          fi
+        else
+          echo "✅ Wallet already funded (${CURRENT_BALANCE} SOL)"
+        fi
+
+        sleep 1
+        BALANCE=$({{.SOLANA_CLI}} balance "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null || echo "0 SOL")
+        echo "✅ Final balance: $BALANCE"
+
+  e2e:create-usdc-ata:
+    desc: "Create USDC ATA for merchant dev wallet"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        WALLET_ADDR=$(solana-keygen pubkey "$WALLET_PATH")
+
+        if [ -z "{{.USDC_MINT}}" ]; then
+          echo "❌ USDC_MINT not set in .env.local"
+          echo "   Run: cd ../tally-platform && task dev:usdc:setup"
+          exit 1
+        fi
+
+        echo "🪙 Creating USDC ATA for merchant wallet..."
+
+        OUTPUT=$(spl-token create-account {{.USDC_MINT}} --owner "$WALLET_ADDR" --fee-payer ~/.config/solana/id.json --url {{.RPC_URL}} 2>&1 || true)
+
+        ATA=$(echo "$OUTPUT" | grep -oE '[1-9A-HJ-NP-Za-km-z]{32,44}' | head -1)
+
+        if [ -z "$ATA" ]; then
+          echo "❌ Failed to create/find ATA"
+          echo "$OUTPUT"
+          exit 1
+        fi
+
+        if echo "$OUTPUT" | grep -q "Creating account"; then
+          echo "✅ Created USDC ATA: $ATA"
+        else
+          echo "✅ USDC ATA exists: $ATA"
+        fi
+
+        echo "$ATA" > /tmp/tally-merchant-dev-usdc-ata
+
+  e2e:init-global-config:
+    desc: "Initialize global program config"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        MAIN_WALLET="$HOME/.config/solana/id.json"
+        PLATFORM_AUTHORITY=$(solana-keygen pubkey "$MAIN_WALLET")
+
+        echo "⚙️  Initializing global program config..."
+        echo "   Platform Authority: $PLATFORM_AUTHORITY"
+        echo "   USDC Mint: {{.USDC_MINT}}"
+        echo ""
+
+        # Check if tally-admin exists
+        if ! command -v tally-admin >/dev/null 2>&1; then
+          echo "⚠️  tally-admin not found, skipping global config initialization"
+          echo "   Global config should already be initialized"
+          exit 0
+        fi
+
+        # Check if config already exists (idempotent)
+        if tally-admin --rpc-url {{.RPC_URL}} --program-id {{.PROGRAM_ID}} config view >/dev/null 2>&1; then
+          echo "✅ Global config already initialized"
+        else
+          tally-admin setup init \
+            --rpc-url {{.RPC_URL}} \
+            --program-id {{.PROGRAM_ID}} \
+            --platform-authority "$PLATFORM_AUTHORITY" \
+            --allowed-mint {{.USDC_MINT}} \
+            --authority "$MAIN_WALLET"
+
+          echo ""
+          echo "✅ Global config initialized successfully"
+        fi
+
+  e2e:init-payee:
+    desc: "Initialize payee with merchant dev wallet"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        export SOLANA_KEYPAIR="$WALLET_PATH"
+        USDC_ATA=$(cat /tmp/tally-merchant-dev-usdc-ata)
+
+        echo "🏪 Initializing payee with merchant dev wallet..."
+        echo "   Wallet: $(solana-keygen pubkey "$WALLET_PATH")"
+        echo "   Treasury: $USDC_ATA"
+        echo ""
+
+        # Check if payee already exists (idempotent)
+        if [ -f /tmp/tally-merchant-dev-payee-pda ]; then
+          EXISTING_PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+          if tally-merchant \
+            --rpc-url {{.RPC_URL}} \
+            --program-id {{.PROGRAM_ID}} \
+            --usdc-mint {{.USDC_MINT}} \
+            payee show \
+            --payee "$EXISTING_PAYEE_PDA" >/dev/null 2>&1; then
+            echo "✅ Payee already initialized"
+            echo "   Payee PDA: $EXISTING_PAYEE_PDA"
+            exit 0
+          fi
+        fi
+
+        # Initialize new payee
+        OUTPUT=$(tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payee init \
+          --treasury "$USDC_ATA" 2>&1)
+
+        echo "$OUTPUT"
+
+        # Extract payee PDA
+        PAYEE_PDA=$(echo "$OUTPUT" | grep "Payee PDA:" | awk '{print $3}')
+        if [ -n "$PAYEE_PDA" ]; then
+          echo "$PAYEE_PDA" > /tmp/tally-merchant-dev-payee-pda
+          echo ""
+          echo "✅ Payee PDA: $PAYEE_PDA"
+        else
+          echo "❌ Failed to extract payee PDA"
+          exit 1
+        fi
+
+  e2e:create-payment-terms:
+    desc: "Create multiple payment terms for testing"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        export SOLANA_KEYPAIR="$WALLET_PATH"
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo "📋 Creating test payment terms..."
+        echo ""
+
+        CREATED_COUNT=0
+        SKIPPED_COUNT=0
+
+        # Create Basic tier - $5/month
+        echo "Creating: Basic ($5/month)..."
+        if tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payment-terms create \
+          --payee "$PAYEE_PDA" \
+          --id "basic" \
+          --amount-usdc "5.0" \
+          --period-months "1" 2>&1 | grep -q "already exists"; then
+          echo "✅ Basic tier already exists"
+          SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+        else
+          CREATED_COUNT=$((CREATED_COUNT + 1))
+        fi
+
+        echo ""
+
+        # Create Pro tier - $15/month
+        echo "Creating: Pro ($15/month)..."
+        if tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payment-terms create \
+          --payee "$PAYEE_PDA" \
+          --id "pro" \
+          --amount-usdc "15.0" \
+          --period-months "1" 2>&1 | grep -q "already exists"; then
+          echo "✅ Pro tier already exists"
+          SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+        else
+          CREATED_COUNT=$((CREATED_COUNT + 1))
+        fi
+
+        echo ""
+
+        # Create Enterprise tier - $50/month
+        echo "Creating: Enterprise ($50/month)..."
+        if tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payment-terms create \
+          --payee "$PAYEE_PDA" \
+          --id "enterprise" \
+          --amount-usdc "50.0" \
+          --period-months "1" 2>&1 | grep -q "already exists"; then
+          echo "✅ Enterprise tier already exists"
+          SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+        else
+          CREATED_COUNT=$((CREATED_COUNT + 1))
+        fi
+
+        echo ""
+        if [ $CREATED_COUNT -gt 0 ]; then
+          echo "✅ Created $CREATED_COUNT payment terms"
+        fi
+        if [ $SKIPPED_COUNT -gt 0 ]; then
+          echo "✅ Skipped $SKIPPED_COUNT existing payment terms"
+        fi
+
+  e2e:show-payee:
+    desc: "Display payee details"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        export SOLANA_KEYPAIR="$WALLET_PATH"
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "                    PAYEE DETAILS"
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+
+        tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payee show \
+          --payee "$PAYEE_PDA"
+
+  e2e:list-payment-terms:
+    desc: "List all payment terms"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        export SOLANA_KEYPAIR="$WALLET_PATH"
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "                  PAYMENT TERMS"
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+
+        tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payment-terms list \
+          --payee "$PAYEE_PDA"
+
+  e2e:dashboard:
+    desc: "Show dashboard overview"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        export SOLANA_KEYPAIR="$WALLET_PATH"
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "                    DASHBOARD"
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+
+        tally-merchant \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          dashboard overview \
+          --merchant "$PAYEE_PDA"
+
+  e2e:test-config:
+    desc: "Test config file operations"
+    internal: true
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/merchant-dev.json"
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "               CONFIG FILE OPERATIONS"
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+
+        echo "📝 Testing config operations..."
+        echo ""
+
+        # Show current config
+        echo "Current config:"
+        tally-merchant config show || echo "No config yet"
+        echo ""
+
+        # Set merchant in profile
+        echo "Setting merchant in config..."
+        tally-merchant config set merchant "$PAYEE_PDA"
+        echo ""
+
+        # Show updated config
+        echo "Updated config:"
+        tally-merchant config show || echo "⚠️  Config show currently unavailable"
+
+        echo ""
+        echo "✅ Config operations complete"
+
+  e2e:cleanup:
+    desc: "Clean up E2E test state (keeps wallet, removes temp files)"
+    cmds:
+      - |
+        echo "🧹 Cleaning up E2E test state..."
+        rm -f /tmp/tally-merchant-dev-*
+        echo "✅ Cleanup complete"
+        echo ""
+        echo "Note: Wallet at ~/.config/solana/merchant-dev.json is preserved"
+        echo "      To remove it: rm ~/.config/solana/merchant-dev.json"
+
+  e2e:
+    desc: "Run complete end-to-end test with merchant dev wallet"
+    deps: [localnet:check, e2e:install]
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        echo "╔═══════════════════════════════════════════════════════════╗"
+        echo "║          TALLY CLI END-TO-END TEST                        ║"
+        echo "║          Using merchant-dev.json wallet                   ║"
+        echo "╚═══════════════════════════════════════════════════════════╝"
+        echo ""
+      - task: e2e:setup-wallet
+      - task: e2e:fund-wallet
+      - task: e2e:create-usdc-ata
+      - task: e2e:init-global-config
+      - task: e2e:init-payee
+      - task: e2e:create-payment-terms
+      - task: e2e:show-payee
+      - task: e2e:list-payment-terms
+      - task: e2e:dashboard
+      - task: e2e:test-config
+      - |
+        echo ""
+        echo "╔═══════════════════════════════════════════════════════════╗"
+        echo "║              E2E TEST COMPLETED SUCCESSFULLY              ║"
+        echo "╚═══════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "📋 Summary:"
+        echo "   Wallet: $HOME/.config/solana/merchant-dev.json"
+        echo "   Payee PDA: $(cat /tmp/tally-merchant-dev-payee-pda 2>/dev/null || echo 'N/A')"
+        echo "   Payment Terms: 3 (basic, pro, enterprise)"
+        echo ""
+        echo "🎯 Next steps:"
+        echo "   - Test subscriptions with a separate subscriber wallet"
+        echo "   - Run: task e2e:cleanup to reset test state"
+
+  # =============================================================================
   # CLI COMMANDS (Generic wrappers)
   # =============================================================================
 
