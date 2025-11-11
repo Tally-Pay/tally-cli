@@ -55,10 +55,14 @@ impl TallyCliConfig {
     }
 
     /// Convert USDC micro-units to display units (USDC)
-    #[allow(clippy::cast_precision_loss)] // Acceptable for display formatting
+    ///
+    /// Uses integer arithmetic to avoid f64 precision loss.
+    /// Returns formatted string with 6 decimal places.
     #[must_use]
-    pub fn format_usdc(&self, micro_units: u64) -> f64 {
-        micro_units as f64 / self.usdc_decimals_divisor as f64
+    pub fn format_usdc(&self, micro_units: u64) -> String {
+        let whole = micro_units / self.usdc_decimals_divisor;
+        let fractional = micro_units % self.usdc_decimals_divisor;
+        format!("{whole}.{fractional:06}")
     }
 
     /// Convert fee basis points to percentage
@@ -101,9 +105,10 @@ mod tests {
     fn test_usdc_formatting() {
         let config = TallyCliConfig::new();
 
-        assert!((config.format_usdc(1_000_000) - 1.0).abs() < f64::EPSILON);
-        assert!((config.format_usdc(5_000_000) - 5.0).abs() < f64::EPSILON);
-        assert!((config.format_usdc(500_000) - 0.5).abs() < f64::EPSILON);
+        assert_eq!(config.format_usdc(1_000_000), "1.000000");
+        assert_eq!(config.format_usdc(5_000_000), "5.000000");
+        assert_eq!(config.format_usdc(500_000), "0.500000");
+        assert_eq!(config.format_usdc(1_234_567), "1.234567");
     }
 
     #[test]

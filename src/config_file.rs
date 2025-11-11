@@ -156,8 +156,8 @@ impl ConfigFile {
             })?;
         }
 
-        let contents = toml::to_string_pretty(self)
-            .context("Failed to serialize config to TOML")?;
+        let contents =
+            toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
 
         fs::write(&path, contents)
             .with_context(|| format!("Failed to write config file: {}", path.display()))?;
@@ -173,8 +173,7 @@ impl ConfigFile {
     ///
     /// Returns an error if the config directory cannot be determined
     pub fn config_file_path() -> Result<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .context("Failed to determine config directory")?;
+        let config_dir = dirs::config_dir().context("Failed to determine config directory")?;
 
         Ok(config_dir.join("tally").join("config.toml"))
     }
@@ -289,11 +288,24 @@ impl ConfigFile {
 
     /// Set merchant PDA for the active profile
     ///
+    /// Kept for backward compatibility with existing config files.
+    /// New code should use `set_payee()` instead.
+    ///
     /// # Errors
     ///
     /// Returns an error if no active profile is set
+    #[allow(dead_code)]
     pub fn set_merchant(&mut self, merchant_pda: String) -> Result<()> {
         self.set_profile_value("merchant", merchant_pda)
+    }
+
+    /// Set the payee PDA for the active profile
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no active profile is set
+    pub fn set_payee(&mut self, payee_pda: String) -> Result<()> {
+        self.set_profile_value("payee", payee_pda)
     }
 }
 
@@ -380,7 +392,10 @@ mod tests {
         let parsed: ConfigFile = toml::from_str(&toml).expect("Should deserialize");
 
         assert_eq!(parsed.version, config.version);
-        assert_eq!(parsed.defaults.active_profile, config.defaults.active_profile);
+        assert_eq!(
+            parsed.defaults.active_profile,
+            config.defaults.active_profile
+        );
         assert_eq!(parsed.profiles.len(), config.profiles.len());
     }
 

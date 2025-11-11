@@ -10,9 +10,8 @@ static COLOR_ENABLED: OnceLock<bool> = OnceLock::new();
 
 /// Initialize color support based on environment and CLI flags
 pub fn init_colors(no_color_flag: bool) {
-    let should_enable = !no_color_flag
-        && std::env::var("NO_COLOR").is_err()
-        && atty::is(atty::Stream::Stdout);
+    let should_enable =
+        !no_color_flag && std::env::var("NO_COLOR").is_err() && atty::is(atty::Stream::Stdout);
 
     COLOR_ENABLED.get_or_init(|| should_enable);
 
@@ -25,9 +24,8 @@ pub fn init_colors(no_color_flag: bool) {
 /// Check if colors are enabled
 #[must_use]
 pub fn colors_enabled() -> bool {
-    *COLOR_ENABLED.get_or_init(|| {
-        std::env::var("NO_COLOR").is_err() && atty::is(atty::Stream::Stdout)
-    })
+    *COLOR_ENABLED
+        .get_or_init(|| std::env::var("NO_COLOR").is_err() && atty::is(atty::Stream::Stdout))
 }
 
 /// Color theme for CLI output
@@ -135,58 +133,17 @@ impl Theme {
     }
 }
 
-/// Get terminal width for responsive table formatting
-#[must_use]
-pub fn terminal_width() -> usize {
-    terminal_size::terminal_size()
-        .map_or(80, |(w, _)| w.0 as usize) // Default to 80 if can't detect
-}
-
-/// Truncate text to fit within terminal width with ellipsis
-#[must_use]
-pub fn truncate_to_width(text: &str, max_width: usize) -> String {
-    if text.len() <= max_width {
-        text.to_string()
-    } else if max_width <= 3 {
-        "...".to_string()
-    } else {
-        format!("{}...", &text[..max_width - 3])
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_truncate_to_width_no_truncation() {
-        let text = "Hello";
-        assert_eq!(truncate_to_width(text, 10), "Hello");
-    }
-
-    #[test]
-    fn test_truncate_to_width_exact_fit() {
-        let text = "Hello";
-        assert_eq!(truncate_to_width(text, 5), "Hello");
-    }
-
-    #[test]
-    fn test_truncate_to_width_needs_truncation() {
-        let text = "Hello, World!";
-        assert_eq!(truncate_to_width(text, 10), "Hello, ...");
-    }
-
-    #[test]
-    fn test_truncate_to_width_very_small() {
-        let text = "Hello";
-        assert_eq!(truncate_to_width(text, 3), "...");
-        assert_eq!(truncate_to_width(text, 2), "...");
-        assert_eq!(truncate_to_width(text, 1), "...");
-    }
-
-    #[test]
-    fn test_terminal_width_returns_positive() {
-        let width = terminal_width();
-        assert!(width > 0, "Terminal width should be positive");
+    fn test_theme_methods_exist() {
+        // Basic smoke test to ensure Theme methods compile
+        let _ = Theme::header("test");
+        let _ = Theme::info("test");
+        let _ = Theme::value("test");
+        let _ = Theme::warning("test");
+        let _ = Theme::error("test");
     }
 }

@@ -6,6 +6,8 @@ edition = "2021"
 [lints.rust]
 # Forbid unsafe code in CLI too
 unsafe_code = "forbid"
+# Deny all warnings during development. DO NOT suppress with clippy directives.
+warnings = "deny"
 
 [lints.clippy]
 # Standard safety lints but allowing for clap derive macros
@@ -36,7 +38,7 @@ futures-util = "0.3"
 indicatif = "0.18.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tally-sdk = { path = "../tally-protocol/sdk" }
+tally-sdk = { path = "../tally-protocol/sdk", features=["signing"] }
 terminal_size = "0.4.3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "fs", "net"] }
 tokio-tungstenite = "0.24"

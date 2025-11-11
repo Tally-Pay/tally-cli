@@ -6,7 +6,7 @@ use clap::ValueEnum;
 use std::fmt::Write as _;
 use std::str::FromStr;
 use tally_sdk::solana_sdk::pubkey::Pubkey;
-use tally_sdk::{DashboardClient, SimpleTallyClient};
+use tally_sdk::{DashboardClient, SimpleTallyClient, UsdcAmount};
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum OutputFormat {
@@ -78,6 +78,12 @@ fn extract_and_execute_overview(
         .nth(1)
         .and_then(|s| s.split_whitespace().next())
         .and_then(|s| s.trim_matches(|c| c == '"' || c == ',').split(',').next())
+        // Strip Option wrapper if present (e.g., "Some(\"address\")" -> "address")
+        .map(|s| {
+            s.trim_start_matches("Some(")
+                .trim_end_matches(')')
+                .trim_matches('"')
+        })
         .context("Failed to extract merchant address from command")?;
 
     let merchant = Pubkey::from_str(merchant_str)
@@ -85,7 +91,7 @@ fn extract_and_execute_overview(
 
     // Get overview data
     let overview = dashboard_client
-        .get_merchant_overview(&merchant)
+        .get_payee_overview(&merchant)
         .context("Failed to fetch merchant overview")?;
 
     // Format output
@@ -99,24 +105,45 @@ fn extract_and_execute_overview(
             let mut wtr = csv::Writer::from_writer(vec![]);
 
             // Write header
-            wtr.write_record([
-                "metric",
-                "value",
-            ])?;
+            wtr.write_record(["metric", "value"])?;
 
             // Write metrics
             wtr.write_record(["merchant_address", &merchant.to_string()])?;
-            wtr.write_record(["merchant_authority", &overview.merchant_authority.to_string()])?;
+            wtr.write_record(["merchant_authority", &overview.payee_authority.to_string()])?;
             wtr.write_record(["usdc_mint", &overview.usdc_mint.to_string()])?;
-            wtr.write_record(["total_revenue_usdc", &config.format_usdc(overview.total_revenue).to_string()])?;
-            wtr.write_record(["monthly_revenue_usdc", &config.format_usdc(overview.monthly_revenue).to_string()])?;
-            wtr.write_record(["average_revenue_per_user_usdc", &config.format_usdc(overview.average_revenue_per_user).to_string()])?;
-            wtr.write_record(["total_plans", &overview.total_plans.to_string()])?;
-            wtr.write_record(["active_subscriptions", &overview.active_subscriptions.to_string()])?;
-            wtr.write_record(["inactive_subscriptions", &overview.inactive_subscriptions.to_string()])?;
-            wtr.write_record(["churn_rate_percent", &format!("{:.2}", overview.churn_rate())])?;
-            wtr.write_record(["monthly_new_subscriptions", &overview.monthly_new_subscriptions.to_string()])?;
-            wtr.write_record(["monthly_canceled_subscriptions", &overview.monthly_canceled_subscriptions.to_string()])?;
+            wtr.write_record([
+                "total_revenue_usdc",
+                &UsdcAmount::from_microlamports(overview.total_revenue).to_string(),
+            ])?;
+            wtr.write_record([
+                "monthly_revenue_usdc",
+                &UsdcAmount::from_microlamports(overview.monthly_revenue).to_string(),
+            ])?;
+            wtr.write_record([
+                "average_revenue_per_user_usdc",
+                &config.format_usdc(overview.average_revenue_per_payer),
+            ])?;
+            wtr.write_record(["total_plans", &overview.total_payment_terms.to_string()])?;
+            wtr.write_record([
+                "active_subscriptions",
+                &overview.active_agreements.to_string(),
+            ])?;
+            wtr.write_record([
+                "inactive_subscriptions",
+                &overview.inactive_agreements.to_string(),
+            ])?;
+            wtr.write_record([
+                "churn_rate_percent",
+                &format!("{:.2}", overview.churn_rate()),
+            ])?;
+            wtr.write_record([
+                "monthly_new_subscriptions",
+                &overview.monthly_new_agreements.to_string(),
+            ])?;
+            wtr.write_record([
+                "monthly_canceled_subscriptions",
+                &overview.monthly_paused_agreements.to_string(),
+            ])?;
 
             let data = String::from_utf8(wtr.into_inner()?)?;
             Ok(data)
@@ -130,30 +157,34 @@ fn extract_and_execute_overview(
             writeln!(
                 output,
                 "  Total Revenue:        {} USDC",
-                config.format_usdc(overview.total_revenue)
+                UsdcAmount::from_microlamports(overview.total_revenue)
             )?;
             writeln!(
                 output,
                 "  Monthly Revenue:      {} USDC",
-                config.format_usdc(overview.monthly_revenue)
+                UsdcAmount::from_microlamports(overview.monthly_revenue)
             )?;
             writeln!(
                 output,
                 "  Avg Revenue per User: {} USDC",
-                config.format_usdc(overview.average_revenue_per_user)
+                UsdcAmount::from_microlamports(overview.average_revenue_per_payer)
             )?;
 
             output.push_str("\nSubscription Statistics:\n");
-            writeln!(output, "  Total Plans:          {}", overview.total_plans)?;
+            writeln!(
+                output,
+                "  Total Plans:          {}",
+                overview.total_payment_terms
+            )?;
             writeln!(
                 output,
                 "  Active Subscriptions: {}",
-                overview.active_subscriptions
+                overview.active_agreements
             )?;
             writeln!(
                 output,
                 "  Inactive Subscriptions: {}",
-                overview.inactive_subscriptions
+                overview.inactive_agreements
             )?;
             writeln!(
                 output,
@@ -165,19 +196,19 @@ fn extract_and_execute_overview(
             writeln!(
                 output,
                 "  New Subscriptions:    {}",
-                overview.monthly_new_subscriptions
+                overview.monthly_new_agreements
             )?;
             writeln!(
                 output,
-                "  Canceled Subscriptions: {}",
-                overview.monthly_canceled_subscriptions
+                "  PaymentAgreementPaused Subscriptions: {}",
+                overview.monthly_paused_agreements
             )?;
 
             output.push_str("\nConfiguration:\n");
             writeln!(
                 output,
                 "  Merchant Authority:   {}",
-                overview.merchant_authority
+                overview.payee_authority
             )?;
             writeln!(output, "  USDC Mint:            {}", overview.usdc_mint)?;
 
@@ -187,7 +218,6 @@ fn extract_and_execute_overview(
 }
 
 /// Execute the Analytics command
-#[allow(clippy::too_many_lines)]
 fn extract_and_execute_analytics(
     dashboard_client: &DashboardClient,
     command_str: &str,
@@ -206,7 +236,7 @@ fn extract_and_execute_analytics(
 
     // Get plan analytics
     let analytics = dashboard_client
-        .get_plan_analytics(&plan)
+        .get_payment_terms_analytics(&plan)
         .context("Failed to fetch plan analytics")?;
 
     // Format output
@@ -217,33 +247,60 @@ fn extract_and_execute_analytics(
         }
         OutputFormat::Csv => {
             // CSV output for plan analytics
-            let plan_id_str = String::from_utf8(analytics.plan.plan_id.to_vec())
-                .unwrap_or_else(|_| format!("{:?}", analytics.plan.plan_id));
+            let plan_id_str = String::from_utf8(analytics.payment_terms.terms_id.to_vec())
+                .unwrap_or_else(|_| format!("{:?}", analytics.payment_terms.terms_id));
 
             let mut wtr = csv::Writer::from_writer(vec![]);
 
             // Write header
-            wtr.write_record([
-                "metric",
-                "value",
-            ])?;
+            wtr.write_record(["metric", "value"])?;
 
             // Write metrics
             wtr.write_record(["plan_id", &plan_id_str])?;
-            wtr.write_record(["plan_address", &analytics.plan_address.to_string()])?;
-            wtr.write_record(["price_usdc", &config.format_usdc(analytics.plan.price_usdc).to_string()])?;
-            wtr.write_record(["period_seconds", &analytics.plan.period_secs.to_string()])?;
-            wtr.write_record(["active", &analytics.plan.active.to_string()])?;
-            wtr.write_record(["total_revenue_usdc", &config.format_usdc(analytics.total_revenue).to_string()])?;
-            wtr.write_record(["monthly_revenue_usdc", &config.format_usdc(analytics.monthly_revenue).to_string()])?;
+            wtr.write_record(["plan_address", &analytics.payment_terms_address.to_string()])?;
+            wtr.write_record([
+                "price_usdc",
+                &config.format_usdc(analytics.payment_terms.amount_usdc),
+            ])?;
+            wtr.write_record([
+                "period_seconds",
+                &analytics.payment_terms.period_secs.to_string(),
+            ])?;
+            wtr.write_record(["active", "true"])?;
+            wtr.write_record([
+                "total_revenue_usdc",
+                &UsdcAmount::from_microlamports(analytics.total_revenue).to_string(),
+            ])?;
+            wtr.write_record([
+                "monthly_revenue_usdc",
+                &UsdcAmount::from_microlamports(analytics.monthly_revenue).to_string(),
+            ])?;
             wtr.write_record(["active_count", &analytics.active_count.to_string()])?;
             wtr.write_record(["inactive_count", &analytics.inactive_count.to_string()])?;
-            wtr.write_record(["total_subscriptions", &analytics.total_subscriptions().to_string()])?;
-            wtr.write_record(["churn_rate_percent", &format!("{:.2}", analytics.churn_rate())])?;
-            wtr.write_record(["average_duration_days", &format!("{:.1}", analytics.average_duration_days)])?;
-            wtr.write_record(["monthly_new_subscriptions", &analytics.monthly_new_subscriptions.to_string()])?;
-            wtr.write_record(["monthly_canceled_subscriptions", &analytics.monthly_canceled_subscriptions.to_string()])?;
-            wtr.write_record(["monthly_growth_rate_percent", &format!("{:.2}", analytics.monthly_growth_rate())])?;
+            wtr.write_record([
+                "total_subscriptions",
+                &analytics.total_agreements().to_string(),
+            ])?;
+            wtr.write_record([
+                "churn_rate_percent",
+                &format!("{:.2}", analytics.churn_rate()),
+            ])?;
+            wtr.write_record([
+                "average_duration_days",
+                &format!("{:.1}", analytics.average_duration_days),
+            ])?;
+            wtr.write_record([
+                "monthly_new_subscriptions",
+                &analytics.monthly_new_agreements.to_string(),
+            ])?;
+            wtr.write_record([
+                "monthly_canceled_subscriptions",
+                &analytics.monthly_paused_agreements.to_string(),
+            ])?;
+            wtr.write_record([
+                "monthly_growth_rate_percent",
+                &format!("{:.2}", analytics.monthly_growth_rate()),
+            ])?;
             if let Some(conversion_rate) = analytics.conversion_rate {
                 wtr.write_record(["conversion_rate_percent", &format!("{conversion_rate:.2}")])?;
             }
@@ -253,8 +310,8 @@ fn extract_and_execute_analytics(
         }
         OutputFormat::Human => {
             // Convert plan_id bytes to string
-            let plan_id_str = String::from_utf8(analytics.plan.plan_id.to_vec())
-                .unwrap_or_else(|_| format!("{:?}", analytics.plan.plan_id));
+            let plan_id_str = String::from_utf8(analytics.payment_terms.terms_id.to_vec())
+                .unwrap_or_else(|_| format!("{:?}", analytics.payment_terms.terms_id));
 
             let mut output = format!("\nPlan Analytics - {plan_id_str}\n");
             output.push_str(&"=".repeat(70));
@@ -262,29 +319,33 @@ fn extract_and_execute_analytics(
 
             output.push_str("\nPlan Information:\n");
             writeln!(output, "  Plan ID:              {plan_id_str}")?;
-            writeln!(output, "  Plan Address:         {}", analytics.plan_address)?;
+            writeln!(
+                output,
+                "  Plan Address:         {}",
+                analytics.payment_terms_address
+            )?;
             writeln!(
                 output,
                 "  Price:                {} USDC",
-                config.format_usdc(analytics.plan.price_usdc)
+                UsdcAmount::from_microlamports(analytics.payment_terms.amount_usdc)
             )?;
             writeln!(
                 output,
                 "  Period:               {} seconds",
-                analytics.plan.period_secs
+                analytics.payment_terms.period_secs
             )?;
-            writeln!(output, "  Active:               {}", analytics.plan.active)?;
+            writeln!(output, "  Active:               true")?;
 
             output.push_str("\nRevenue Statistics:\n");
             writeln!(
                 output,
                 "  Total Revenue:        {} USDC",
-                config.format_usdc(analytics.total_revenue)
+                UsdcAmount::from_microlamports(analytics.total_revenue)
             )?;
             writeln!(
                 output,
                 "  Monthly Revenue:      {} USDC",
-                config.format_usdc(analytics.monthly_revenue)
+                UsdcAmount::from_microlamports(analytics.monthly_revenue)
             )?;
 
             output.push_str("\nSubscription Statistics:\n");
@@ -297,7 +358,7 @@ fn extract_and_execute_analytics(
             writeln!(
                 output,
                 "  Total Subscriptions:  {}",
-                analytics.total_subscriptions()
+                analytics.total_agreements()
             )?;
             writeln!(
                 output,
@@ -314,12 +375,12 @@ fn extract_and_execute_analytics(
             writeln!(
                 output,
                 "  New Subscriptions:    {}",
-                analytics.monthly_new_subscriptions
+                analytics.monthly_new_agreements
             )?;
             writeln!(
                 output,
-                "  Canceled Subscriptions: {}",
-                analytics.monthly_canceled_subscriptions
+                "  PaymentAgreementPaused Subscriptions: {}",
+                analytics.monthly_paused_agreements
             )?;
             writeln!(
                 output,
@@ -349,6 +410,12 @@ fn extract_and_execute_events(
         .nth(1)
         .and_then(|s| s.split_whitespace().next())
         .and_then(|s| s.trim_matches(|c| c == '"' || c == ',').split(',').next())
+        // Strip Option wrapper if present (e.g., "Some(\"address\")" -> "address")
+        .map(|s| {
+            s.trim_start_matches("Some(")
+                .trim_end_matches(')')
+                .trim_matches('"')
+        })
         .context("Failed to extract merchant address from command")?;
 
     let merchant = Pubkey::from_str(merchant_str)
@@ -394,14 +461,14 @@ fn extract_and_execute_events(
             writeln!(output, "Event: {:?}", event.event_type)?;
             writeln!(output, "  Timestamp: {}", event.timestamp)?;
 
-            if let Some(subscriber) = event.subscriber {
+            if let Some(subscriber) = event.payer {
                 writeln!(output, "  Subscriber: {subscriber}")?;
             }
-            if let Some(plan) = event.plan_address {
+            if let Some(plan) = event.payment_terms_address {
                 writeln!(output, "  Plan: {plan}")?;
             }
             if let Some(amount) = event.amount {
-                writeln!(output, "  Amount: {} USDC", config.format_usdc(amount))?;
+                writeln!(output, "  Amount: {} USDC", UsdcAmount::from_microlamports(amount))?;
             }
             if let Some(sig) = &event.transaction_signature {
                 writeln!(output, "  Signature: {sig}")?;
@@ -427,6 +494,12 @@ fn extract_and_execute_subscriptions(
         .nth(1)
         .and_then(|s| s.split_whitespace().next())
         .and_then(|s| s.trim_matches(|c| c == '"' || c == ',').split(',').next())
+        // Strip Option wrapper if present (e.g., "Some(\"address\")" -> "address")
+        .map(|s| {
+            s.trim_start_matches("Some(")
+                .trim_end_matches(')')
+                .trim_matches('"')
+        })
         .context("Failed to extract merchant address from command")?;
 
     let merchant = Pubkey::from_str(merchant_str)
@@ -437,12 +510,12 @@ fn extract_and_execute_subscriptions(
 
     // Get subscriptions
     let mut subscriptions = dashboard_client
-        .get_live_subscriptions(&merchant)
+        .get_live_agreements(&merchant)
         .context("Failed to fetch subscriptions")?;
 
     // Filter if active_only
     if active_only {
-        subscriptions.retain(|sub| sub.subscription.active);
+        subscriptions.retain(|sub| sub.payment_agreement.active);
     }
 
     // Format output
@@ -471,20 +544,20 @@ fn extract_and_execute_subscriptions(
 
             // Write data rows
             for sub in &subscriptions {
-                let plan_id_str = String::from_utf8(sub.plan.plan_id.to_vec())
-                    .unwrap_or_else(|_| format!("{:?}", sub.plan.plan_id));
+                let plan_id_str = String::from_utf8(sub.payment_terms.terms_id.to_vec())
+                    .unwrap_or_else(|_| format!("{:?}", sub.payment_terms.terms_id));
 
                 wtr.write_record([
-                    sub.subscription.subscriber.to_string(),
+                    sub.payment_agreement.payer.to_string(),
                     plan_id_str,
-                    sub.subscription.plan.to_string(),
+                    sub.payment_agreement.payment_terms.to_string(),
                     format!("{:?}", sub.status),
-                    sub.subscription.active.to_string(),
-                    sub.subscription.renewals.to_string(),
-                    config.format_usdc(sub.total_paid).to_string(),
-                    config.format_usdc(sub.plan.price_usdc).to_string(),
-                    sub.plan.period_secs.to_string(),
-                    sub.subscription.next_renewal_ts.to_string(),
+                    sub.payment_agreement.active.to_string(),
+                    sub.payment_agreement.payment_count.to_string(),
+                    UsdcAmount::from_microlamports(sub.total_paid).to_string(),
+                    config.format_usdc(sub.payment_terms.amount_usdc),
+                    sub.payment_terms.period_secs.to_string(),
+                    sub.payment_agreement.next_payment_ts.to_string(),
                 ])?;
             }
 
@@ -515,11 +588,11 @@ fn extract_and_execute_subscriptions(
 
                 // Data rows
                 for sub in &subscriptions {
-                    let subscriber_str = sub.subscription.subscriber.to_string();
-                    let plan_id_str = String::from_utf8(sub.plan.plan_id.to_vec())
-                        .unwrap_or_else(|_| format!("{:?}", sub.plan.plan_id));
+                    let subscriber_str = sub.payment_agreement.payer.to_string();
+                    let plan_id_str = String::from_utf8(sub.payment_terms.terms_id.to_vec())
+                        .unwrap_or_else(|_| format!("{:?}", sub.payment_terms.terms_id));
                     let status_str = format!("{:?}", sub.status);
-                    let total_paid_str = format!("{} USDC", config.format_usdc(sub.total_paid));
+                    let total_paid_str = format!("{} USDC", UsdcAmount::from_microlamports(sub.total_paid));
 
                     writeln!(
                         output,
@@ -527,7 +600,7 @@ fn extract_and_execute_subscriptions(
                         truncate_string(&subscriber_str, 44),
                         truncate_string(&plan_id_str, 44),
                         status_str,
-                        sub.subscription.renewals,
+                        sub.payment_agreement.payment_count,
                         total_paid_str
                     )?;
                 }

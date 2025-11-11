@@ -1,6 +1,8 @@
-//! List plans command implementation
+//! List payment terms command implementation
 
-use crate::utils::formatting::{format_plans_human, format_plans_json, PlanInfo};
+use crate::utils::formatting::{
+    format_payment_terms_human, format_payment_terms_json, PaymentTermsInfo,
+};
 use anyhow::{anyhow, Context, Result};
 use clap::ValueEnum;
 use std::str::FromStr;
@@ -14,64 +16,68 @@ pub enum OutputFormat {
     Json,
 }
 
-/// Execute the list plans command
+/// Execute the list payment terms command
 ///
 /// # Errors
-/// Returns error if plan listing fails due to network issues or invalid merchant PDA
-#[allow(clippy::cognitive_complexity)] // Complex data processing and formatting
+/// Returns error if payment terms listing fails due to network issues or invalid payee PDA
+///
+/// # Panics
+/// May panic if `period_secs` from on-chain data is below minimum (24 hours).
+/// This should not occur under normal operation as values are validated on-chain.
 pub async fn execute(
     tally_client: &SimpleTallyClient,
-    merchant_str: &str,
+    payee_str: &str,
     output_format: &OutputFormat,
 ) -> Result<String> {
-    info!("Starting plan listing for merchant: {}", merchant_str);
+    info!("Starting payment terms listing for payee: {}", payee_str);
 
-    // Parse merchant PDA address
-    let merchant_pda = Pubkey::from_str(merchant_str)
-        .map_err(|e| anyhow!("Invalid merchant PDA address '{merchant_str}': {e}"))?;
-    info!("Using merchant PDA: {}", merchant_pda);
+    // Parse payee PDA address
+    let payee_pda = Pubkey::from_str(payee_str)
+        .map_err(|e| anyhow!("Invalid payee PDA address '{payee_str}': {e}"))?;
+    info!("Using payee PDA: {}", payee_pda);
 
-    // Validate merchant exists
+    // Validate payee exists
     if !tally_client
-        .account_exists(&merchant_pda)
-        .context("Failed to check if merchant account exists - check RPC connection")?
+        .account_exists(&payee_pda)
+        .context("Failed to check if payee account exists - check RPC connection")?
     {
         return Err(anyhow!(
-            "Merchant account does not exist at address: {merchant_pda}"
+            "Payee account does not exist at address: {payee_pda}"
         ));
     }
 
-    info!("Querying plans using tally-sdk...");
+    info!("Querying payment terms using tally-sdk...");
 
-    // Use tally-sdk to get all plans for this merchant
-    let plan_accounts = tally_client
-        .list_plans(&merchant_pda)
-        .context("Failed to fetch plans - check RPC connection and merchant account state")?;
+    // Use tally-sdk to get all payment terms for this payee
+    let payment_terms_accounts = tally_client
+        .list_payment_terms(&payee_pda)
+        .context("Failed to fetch payment terms - check RPC connection and payee account state")?;
 
-    info!("Found {} plan accounts", plan_accounts.len());
+    info!(
+        "Found {} payment terms accounts",
+        payment_terms_accounts.len()
+    );
 
-    // Parse and format plan data
-    let mut plans = Vec::new();
-    for (pubkey, plan) in plan_accounts {
-        let plan_info = PlanInfo {
+    // Parse and format payment terms data
+    let mut terms_list = Vec::new();
+    for (pubkey, terms) in payment_terms_accounts {
+        let terms_info = PaymentTermsInfo {
             address: pubkey,
-            plan_id: plan.plan_id_str(),
-            name: plan.name_str(),
-            price_usdc: plan.price_usdc_formatted(),
-            period: plan.period_formatted(),
-            grace_secs: plan.grace_secs,
-            active: plan.active,
+            terms_id: terms.terms_id_str(),
+            amount: tally_sdk::UsdcAmount::from_microlamports(terms.amount_usdc),
+            period: tally_sdk::PaymentPeriod::from_seconds(terms.period_secs)
+                .unwrap_or_else(|_| tally_sdk::PaymentPeriod::days(1).expect("Default period")),
         };
-        info!("Parsed plan: {} ({})", plan_info.plan_id, plan_info.name);
-        plans.push(plan_info);
+        info!("Parsed payment terms: {}", terms_info.terms_id);
+        terms_list.push(terms_info);
     }
 
-    // Sort plans by plan_id for consistent output
-    plans.sort_by(|a, b| a.plan_id.cmp(&b.plan_id));
+    // Sort payment terms by terms_id for consistent output
+    terms_list.sort_by(|a, b| a.terms_id.cmp(&b.terms_id));
 
     // Format output based on requested format
     match output_format {
-        OutputFormat::Human => Ok(format_plans_human(&plans, &merchant_pda)),
-        OutputFormat::Json => format_plans_json(&plans),
+        OutputFormat::Human => Ok(format_payment_terms_human(&terms_list, &payee_pda)),
+        OutputFormat::Json => format_payment_terms_json(&terms_list),
     }
 }

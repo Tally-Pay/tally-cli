@@ -4,7 +4,7 @@ use crate::config::TallyCliConfig;
 use crate::utils::colors::Theme;
 use anyhow::{Context, Result};
 use std::fmt::Write as _;
-use tally_sdk::SimpleTallyClient;
+use tally_sdk::{BasisPoints, SimpleTallyClient, UsdcAmount};
 
 /// Request to show config details
 pub struct ShowConfigRequest<'a> {
@@ -27,6 +27,10 @@ pub struct ShowConfigRequest<'a> {
 /// * Failed to fetch config account from RPC
 /// * Config account not found
 /// * JSON serialization fails
+///
+/// # Panics
+/// May panic if platform fee basis points exceed maximum allowed value (10000).
+/// This should not occur under normal operation as values are validated on-chain.
 pub async fn execute(
     tally_client: &SimpleTallyClient,
     request: &ShowConfigRequest<'_>,
@@ -44,18 +48,18 @@ pub async fn execute(
             "platform_authority": cfg.platform_authority.to_string(),
             "pending_authority": cfg.pending_authority.map(|p| p.to_string()),
             "max_platform_fee_bps": cfg.max_platform_fee_bps,
-            "max_platform_fee_pct": config.format_fee_percentage(cfg.max_platform_fee_bps),
+            "max_platform_fee_pct": BasisPoints::new(cfg.max_platform_fee_bps).expect("Valid fee").percentage(),
             "min_platform_fee_bps": cfg.min_platform_fee_bps,
-            "min_platform_fee_pct": config.format_fee_percentage(cfg.min_platform_fee_bps),
+            "min_platform_fee_pct": BasisPoints::new(cfg.min_platform_fee_bps).expect("Valid fee").percentage(),
             "min_period_seconds": cfg.min_period_seconds,
             "default_allowance_periods": cfg.default_allowance_periods,
             "allowed_mint": cfg.allowed_mint.to_string(),
             "max_withdrawal_amount": cfg.max_withdrawal_amount,
-            "max_withdrawal_amount_usdc": config.format_usdc(cfg.max_withdrawal_amount),
+            "max_withdrawal_amount_usdc": UsdcAmount::from_microlamports(cfg.max_withdrawal_amount).usdc(),
             "max_grace_period_seconds": cfg.max_grace_period_seconds,
             "paused": cfg.paused,
             "keeper_fee_bps": cfg.keeper_fee_bps,
-            "keeper_fee_pct": config.format_fee_percentage(cfg.keeper_fee_bps),
+            "keeper_fee_pct": BasisPoints::new(cfg.keeper_fee_bps).expect("Valid fee").percentage(),
             "bump": cfg.bump,
         });
         Ok(serde_json::to_string_pretty(&json_output)?)
@@ -74,18 +78,95 @@ pub async fn execute(
         let mut output = String::new();
         writeln!(&mut output, "{}", Theme::header("Global Configuration"))?;
         writeln!(&mut output, "{}", Theme::dim("===================="))?;
-        writeln!(&mut output, "{:<26} {}", Theme::info("Platform Authority:"), Theme::highlight(&cfg.platform_authority.to_string()))?;
-        writeln!(&mut output, "{:<26} {}", Theme::info("Pending Authority:"), Theme::dim(&pending_auth))?;
-        writeln!(&mut output, "{:<26} {} bps ({}%)", Theme::info("Max Platform Fee:"), cfg.max_platform_fee_bps, Theme::value(&config.format_fee_percentage(cfg.max_platform_fee_bps).to_string()))?;
-        writeln!(&mut output, "{:<26} {} bps ({}%)", Theme::info("Min Platform Fee:"), cfg.min_platform_fee_bps, Theme::value(&config.format_fee_percentage(cfg.min_platform_fee_bps).to_string()))?;
-        writeln!(&mut output, "{:<26} {} seconds ({} days)", Theme::info("Min Period:"), cfg.min_period_seconds, cfg.min_period_seconds / 86400)?;
-        writeln!(&mut output, "{:<26} {}", Theme::info("Default Allowance Periods:"), Theme::value(&cfg.default_allowance_periods.to_string()))?;
-        writeln!(&mut output, "{:<26} {}", Theme::info("Allowed Mint (USDC):"), Theme::dim(&cfg.allowed_mint.to_string()))?;
-        writeln!(&mut output, "{:<26} {} micro-units ({} USDC)", Theme::info("Max Withdrawal Amount:"), cfg.max_withdrawal_amount, Theme::value(&format!("{:.6}", config.format_usdc(cfg.max_withdrawal_amount))))?;
-        writeln!(&mut output, "{:<26} {} seconds ({} days)", Theme::info("Max Grace Period:"), cfg.max_grace_period_seconds, cfg.max_grace_period_seconds / 86400)?;
-        writeln!(&mut output, "{:<26} {}", Theme::info("Paused:"), paused_status)?;
-        writeln!(&mut output, "{:<26} {} bps ({}%)", Theme::info("Keeper Fee:"), cfg.keeper_fee_bps, Theme::value(&config.format_fee_percentage(cfg.keeper_fee_bps).to_string()))?;
-        write!(&mut output, "{:<26} {}", Theme::info("Bump:"), Theme::dim(&cfg.bump.to_string()))?;
+        writeln!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Platform Authority:"),
+            Theme::highlight(&cfg.platform_authority.to_string())
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Pending Authority:"),
+            Theme::dim(&pending_auth)
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} bps ({}%)",
+            Theme::info("Max Platform Fee:"),
+            cfg.max_platform_fee_bps,
+            Theme::value(
+                &config
+                    .format_fee_percentage(cfg.max_platform_fee_bps)
+                    .to_string()
+            )
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} bps ({}%)",
+            Theme::info("Min Platform Fee:"),
+            cfg.min_platform_fee_bps,
+            Theme::value(
+                &config
+                    .format_fee_percentage(cfg.min_platform_fee_bps)
+                    .to_string()
+            )
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} seconds ({} days)",
+            Theme::info("Min Period:"),
+            cfg.min_period_seconds,
+            cfg.min_period_seconds / 86400
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Default Allowance Periods:"),
+            Theme::value(&cfg.default_allowance_periods.to_string())
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Allowed Mint (USDC):"),
+            Theme::dim(&cfg.allowed_mint.to_string())
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} micro-units ({} USDC)",
+            Theme::info("Max Withdrawal Amount:"),
+            cfg.max_withdrawal_amount,
+            Theme::value(&format!(
+                "{:.6}",
+                UsdcAmount::from_microlamports(cfg.max_withdrawal_amount)
+            ))
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} seconds ({} days)",
+            Theme::info("Max Grace Period:"),
+            cfg.max_grace_period_seconds,
+            cfg.max_grace_period_seconds / 86400
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Paused:"),
+            paused_status
+        )?;
+        writeln!(
+            &mut output,
+            "{:<26} {} bps ({}%)",
+            Theme::info("Keeper Fee:"),
+            cfg.keeper_fee_bps,
+            Theme::value(&BasisPoints::new(cfg.keeper_fee_bps).expect("Valid fee").to_string())
+        )?;
+        write!(
+            &mut output,
+            "{:<26} {}",
+            Theme::info("Bump:"),
+            Theme::dim(&cfg.bump.to_string())
+        )?;
         Ok(output)
     }
 }

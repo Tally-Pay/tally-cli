@@ -59,7 +59,8 @@ enum OutputFormat {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Interactive setup wizard for first-time merchants
-    #[command(long_about = "Launch an interactive wizard to set up your merchant account.\n\n\
+    #[command(
+        long_about = "Launch an interactive wizard to set up your merchant account.\n\n\
                              This guided setup will:\n\
                              • Check your wallet and SOL balance\n\
                              • Help you configure a USDC treasury\n\
@@ -67,7 +68,8 @@ enum Commands {
                              • Create your merchant account\n\
                              • Optionally guide you to create your first plan\n\n\
                              Example:\n  \
-                             tally-merchant init")]
+                             tally-merchant init"
+    )]
     Init {
         /// Skip the optional plan creation step
         #[arg(long)]
@@ -80,22 +82,22 @@ enum Commands {
         command: ConfigCommands,
     },
 
-    /// Merchant account management
-    Merchant {
+    /// Payee account management
+    Payee {
         #[command(subcommand)]
-        command: MerchantCommands,
+        command: PayeeCommands,
     },
 
-    /// Subscription plan management
-    Plan {
+    /// Payment terms management
+    PaymentTerms {
         #[command(subcommand)]
-        command: PlanCommands,
+        command: PaymentTermsCommands,
     },
 
-    /// Subscription management
-    Subscription {
+    /// Payment agreement management
+    Agreement {
         #[command(subcommand)]
-        command: SubscriptionCommands,
+        command: AgreementCommands,
     },
 
     /// Dashboard and analytics
@@ -105,7 +107,8 @@ enum Commands {
     },
 
     /// Generate and install shell completions
-    #[command(long_about = "Generate and install shell completion scripts for your shell.\n\n\
+    #[command(
+        long_about = "Generate and install shell completion scripts for your shell.\n\n\
                              By default, this command will guide you through interactive installation.\n\
                              Use --print to output the completion script for manual installation.\n\n\
                              Examples:\n  \
@@ -118,7 +121,8 @@ enum Commands {
                              # Print script for manual installation\n  \
                              tally-merchant completions zsh --print > ~/.zsh/completions/_tally-merchant\n\n  \
                              # Uninstall completions\n  \
-                             tally-merchant completions zsh --uninstall")]
+                             tally-merchant completions zsh --uninstall"
+    )]
     Completions {
         /// Shell to generate completions for
         #[arg(value_enum)]
@@ -238,9 +242,10 @@ enum ProfileCommands {
 }
 
 #[derive(Subcommand, Debug)]
-enum MerchantCommands {
+enum PayeeCommands {
     /// Initialize a new merchant account
-    #[command(long_about = "Initialize a new merchant account on the Tally protocol.\n\n\
+    #[command(
+        long_about = "Initialize a new merchant account on the Tally protocol.\n\n\
                              This creates your merchant PDA (Program Derived Address) which will\n\
                              be used to manage subscription plans. New merchants are automatically\n\
                              assigned to the Free tier with a 2.0% platform fee.\n\n\
@@ -256,27 +261,31 @@ enum MerchantCommands {
                              Note: For first-time setup, use 'tally-merchant init' instead,\n\
                              which provides an interactive wizard.\n\n\
                              Your merchant starts on the Free tier (2.0% platform fee).\n\
-                             Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers.")]
+                             Contact the platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%) tiers."
+    )]
     Init {
         /// Authority keypair for the merchant
         #[arg(long)]
         authority: Option<String>,
 
         /// USDC treasury account for the merchant (ATA will be created if needed)
-        #[arg(long, help = "USDC Associated Token Account for receiving subscription payments")]
+        #[arg(
+            long,
+            help = "USDC Associated Token Account for receiving subscription payments"
+        )]
         treasury: String,
     },
 
-    /// Show merchant account details
+    /// Show payee account details
     Show {
-        /// Merchant account address
+        /// Payee account address
         #[arg(long)]
-        merchant: String,
+        payee: String,
     },
 }
 
 #[derive(Subcommand, Debug)]
-enum PlanCommands {
+enum PaymentTermsCommands {
     /// Create a new subscription plan
     #[command(long_about = "Create a new subscription plan for your merchant.\n\n\
                              A subscription plan defines the price, billing period, and grace period\n\
@@ -304,117 +313,77 @@ enum PlanCommands {
                              --period-days 90 \\\n    \
                              --grace-days 3")]
     Create {
-        /// Merchant account address
+        /// Payee account address
         #[arg(long)]
-        merchant: String,
+        payee: String,
 
-        /// Plan identifier (used in plan PDA)
-        #[arg(long, help = "Unique identifier for this plan (e.g., 'premium', 'basic')")]
+        /// Payment terms identifier (used in PDA)
+        #[arg(
+            long,
+            help = "Unique identifier for these payment terms (e.g., 'premium', 'basic')"
+        )]
         id: String,
 
-        /// Plan display name
-        #[arg(long, help = "Human-readable name shown to subscribers")]
-        name: String,
-
-        /// Price in USDC (e.g., 10.0 for $10 USDC)
-        #[arg(long = "price-usdc", help = "Subscription price in USDC (e.g., 10.0 for $10/period)")]
-        price_usdc: f64,
+        /// Amount in USDC (e.g., 10.0 for $10 USDC)
+        #[arg(
+            long = "amount-usdc",
+            help = "Payment amount in USDC (e.g., 10.0 for $10/period)"
+        )]
+        amount_usdc: f64,
 
         /// Billing period in days (e.g., 30 for monthly)
-        #[arg(long = "period-days", conflicts_with = "period_months", help = "Billing period in days (e.g., 30 for monthly, 365 for yearly)")]
+        #[arg(
+            long = "period-days",
+            conflicts_with = "period_months",
+            help = "Billing period in days (e.g., 30 for monthly, 365 for yearly)"
+        )]
         period_days: Option<u32>,
 
         /// Billing period in months (convenient shortcut)
-        #[arg(long = "period-months", conflicts_with = "period_days", help = "Billing period in months (e.g., 1 for monthly, 12 for yearly)")]
+        #[arg(
+            long = "period-months",
+            conflicts_with = "period_days",
+            help = "Billing period in months (e.g., 1 for monthly, 12 for yearly)"
+        )]
         period_months: Option<u32>,
 
-        /// Grace period in days (defaults to 1 day if not specified)
-        #[arg(long = "grace-days", default_value = "1", help = "Days after missed payment before subscription is canceled (default: 1)")]
-        grace_days: u32,
-
-        /// Authority keypair for the merchant
+        /// Authority keypair for the payee
         #[arg(long)]
         authority: Option<String>,
     },
 
-    /// List all plans for a merchant
+    /// List all payment terms for a payee
     List {
-        /// Merchant account address
+        /// Payee account address
         #[arg(long)]
-        merchant: String,
-    },
-
-    /// Update subscription plan terms (price, period, grace period)
-    Update {
-        /// Plan account address
-        #[arg(long)]
-        plan: String,
-
-        /// New price in USDC (e.g., 15.0 for $15 USDC)
-        #[arg(long = "price-usdc")]
-        price_usdc: Option<f64>,
-
-        /// New billing period in days
-        #[arg(long = "period-days", conflicts_with = "period_months")]
-        period_days: Option<u32>,
-
-        /// New billing period in months (convenient shortcut)
-        #[arg(long = "period-months", conflicts_with = "period_days")]
-        period_months: Option<u32>,
-
-        /// New grace period in days
-        #[arg(long = "grace-days")]
-        grace_days: Option<u32>,
-
-        /// Authority keypair for the merchant
-        #[arg(long)]
-        authority: Option<String>,
-    },
-
-    /// Deactivate a subscription plan
-    Deactivate {
-        /// Plan account address
-        #[arg(long)]
-        plan: String,
-
-        /// Authority keypair for the merchant
-        #[arg(long)]
-        authority: Option<String>,
-
-        /// Skip confirmation prompt (for scripts)
-        #[arg(long, short = 'y')]
-        yes: bool,
-
-        /// Preview the operation without executing it
-        #[arg(long)]
-        dry_run: bool,
+        payee: String,
     },
 }
 
 #[derive(Subcommand, Debug)]
-enum SubscriptionCommands {
-    /// List subscriptions for a plan
+enum AgreementCommands {
+    /// List payment agreements for payment terms
     List {
-        /// Plan account address
+        /// Payment terms account address
         #[arg(long)]
-        plan: String,
+        payment_terms: String,
     },
 
-    /// Show subscription account details
+    /// Show payment agreement account details
     Show {
-        /// Subscription account address
+        /// Payment agreement account address
         #[arg(long)]
-        subscription: String,
+        agreement: String,
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum DashboardCommands {
     /// Display merchant overview statistics
     Overview {
-        /// Merchant account address
+        /// Merchant account address (defaults to merchant from active profile)
         #[arg(long)]
-        merchant: String,
+        merchant: Option<String>,
     },
 
     /// Show analytics for a specific plan
@@ -426,9 +395,9 @@ enum DashboardCommands {
 
     /// Monitor real-time events for a merchant
     Events {
-        /// Merchant account address
+        /// Merchant account address (defaults to merchant from active profile)
         #[arg(long)]
-        merchant: String,
+        merchant: Option<String>,
 
         /// Only show events since this timestamp
         #[arg(long)]
@@ -437,9 +406,9 @@ enum DashboardCommands {
 
     /// List subscriptions for a merchant with enhanced information
     Subscriptions {
-        /// Merchant account address
+        /// Merchant account address (defaults to merchant from active profile)
         #[arg(long)]
-        merchant: String,
+        merchant: Option<String>,
 
         /// Only show active subscriptions
         #[arg(long)]
@@ -473,19 +442,21 @@ async fn main() -> Result<()> {
         let rpc_url = cli
             .rpc_url
             .as_deref()
-            .or_else(|| std::env::var("TALLY_RPC_URL").ok().as_deref().map(|_| config.default_rpc_url.as_str()))
+            .or_else(|| {
+                std::env::var("TALLY_RPC_URL")
+                    .ok()
+                    .as_deref()
+                    .map(|_| config.default_rpc_url.as_str())
+            })
             .or_else(|| config_file.active_profile().map(|p| p.rpc_url.as_str()))
             .unwrap_or(&config.default_rpc_url);
 
         // Program ID precedence
-        let program_id_from_config = cli
-            .program_id
-            .as_deref()
-            .or_else(|| {
-                config_file
-                    .active_profile()
-                    .and_then(|p| p.program_id.as_deref())
-            });
+        let program_id_from_config = cli.program_id.as_deref().or_else(|| {
+            config_file
+                .active_profile()
+                .and_then(|p| p.program_id.as_deref())
+        });
 
         // Check if program ID is available before trying to create client
         let program_id = if let Some(id) = program_id_from_config {
@@ -522,10 +493,10 @@ async fn main() -> Result<()> {
         };
 
         // Execute command with SDK client
-        execute_command(&cli, Some(&tally_client), &config).await
+        execute_command(&cli, Some(&tally_client), &config, &config_file).await
     } else {
         // Execute command without SDK client (config file operations)
-        execute_command(&cli, None, &config).await
+        execute_command(&cli, None, &config, &config_file).await
     };
 
     // Handle output formatting
@@ -572,14 +543,13 @@ async fn main() -> Result<()> {
 }
 
 /// Check if a command requires SDK access (on-chain operations)
-#[allow(clippy::missing_const_for_fn)]
-fn command_needs_sdk(command: &Commands) -> bool {
+const fn command_needs_sdk(command: &Commands) -> bool {
     match command {
         Commands::Config { command } => matches!(command, ConfigCommands::Show),
         Commands::Init { .. }
-        | Commands::Merchant { .. }
-        | Commands::Plan { .. }
-        | Commands::Subscription { .. }
+        | Commands::Payee { .. }
+        | Commands::PaymentTerms { .. }
+        | Commands::Agreement { .. }
         | Commands::Dashboard { .. } => true,
         Commands::Completions { .. } => false,
     }
@@ -593,22 +563,6 @@ fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
         "csv" => Ok(OutputFormat::Csv),
         _ => Err(anyhow::anyhow!("Invalid output format: {format_str}")),
     }
-}
-
-/// Convert USDC decimal to micro-units with validation
-fn usdc_to_micro_units(usdc: f64) -> Result<u64> {
-    if usdc < 0.0 {
-        return Err(anyhow::anyhow!("Price must be greater than or equal to 0"));
-    }
-    if usdc > 1_000_000.0 {
-        return Err(anyhow::anyhow!(
-            "Price seems too high: ${usdc}. Did you mean ${:.2}?",
-            usdc / 1_000_000.0
-        ));
-    }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let micro_units = (usdc * 1_000_000.0) as u64;
-    Ok(micro_units)
 }
 
 /// Execute config commands
@@ -631,9 +585,7 @@ async fn execute_config_commands(
             commands::execute_show_config(client, &request, config).await
         }
 
-        ConfigCommands::List { profile } => {
-            commands::config_file_ops::list(profile.as_deref())
-        }
+        ConfigCommands::List { profile } => commands::config_file_ops::list(profile.as_deref()),
 
         ConfigCommands::Get { key, profile } => {
             commands::config_file_ops::get(key, profile.as_deref())
@@ -653,9 +605,7 @@ async fn execute_config_commands(
             ProfileCommands::Show { profile } => {
                 commands::config_file_ops::show_profile(profile.as_deref())
             }
-            ProfileCommands::Use { profile } => {
-                commands::config_file_ops::use_profile(profile)
-            }
+            ProfileCommands::Use { profile } => commands::config_file_ops::use_profile(profile),
             ProfileCommands::Create {
                 name,
                 rpc_url,
@@ -671,19 +621,19 @@ async fn execute_config_commands(
     }
 }
 
-/// Execute merchant commands
-async fn execute_merchant_commands(
+/// Execute payee commands
+async fn execute_payee_commands(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
-    command: &MerchantCommands,
+    command: &PayeeCommands,
 ) -> Result<String> {
     match command {
-        MerchantCommands::Init {
+        PayeeCommands::Init {
             authority,
             treasury,
         } => {
-            commands::execute_init_merchant(
+            commands::execute_init_payee(
                 tally_client,
                 authority.as_deref(),
                 treasury,
@@ -693,43 +643,38 @@ async fn execute_merchant_commands(
             .await
         }
 
-        MerchantCommands::Show { merchant } => {
+        PayeeCommands::Show { payee } => {
             let output_format = match cli.output {
                 Some(OutputFormat::Json) => "json",
                 _ => "human",
             };
-            let request = commands::show_merchant::ShowMerchantRequest {
-                merchant,
+            let request = commands::show_payee::ShowPayeeRequest {
+                payee,
                 output_format,
             };
-            commands::execute_show_merchant(tally_client, &request, config).await
+            commands::execute_show_payee(tally_client, &request, config).await
         }
     }
 }
 
-/// Execute plan commands
-async fn execute_plan_commands(
+/// Execute payment terms commands
+async fn execute_payment_terms_commands(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
-    command: &PlanCommands,
+    command: &PaymentTermsCommands,
 ) -> Result<String> {
     match command {
-        PlanCommands::Create {
-            merchant,
+        PaymentTermsCommands::Create {
+            payee,
             id,
-            name,
-            price_usdc,
+            amount_usdc,
             period_days,
             period_months,
-            grace_days,
             authority,
         } => {
-            // Convert USDC to micro-units (6 decimals) with validation
-            let price_micro = usdc_to_micro_units(*price_usdc)?;
-
-            // Convert period to seconds (prefer days, allow months as alternative)
-            let period_secs = period_months.map_or_else(
+            // Convert period to days (prefer days, allow months as alternative)
+            let days = period_months.map_or_else(
                 || {
                     period_days.map_or_else(
                         || {
@@ -737,118 +682,59 @@ async fn execute_plan_commands(
                                 "Either --period-days or --period-months is required"
                             ))
                         },
-                        |days| Ok(i64::from(days) * 86400),
+                        |days| Ok(u64::from(days)),
                     )
                 },
-                |months| Ok(i64::from(months) * 30 * 86400),
+                |months| Ok(u64::from(months) * 30),
             )?;
 
-            // Convert grace period to seconds
-            let grace_secs = i64::from(*grace_days) * 86400;
-
-            let request = commands::create_plan::CreatePlanRequest {
-                merchant_str: merchant,
-                plan_id: id,
-                plan_name: name,
-                price_usdc: price_micro,
-                period_secs,
-                grace_secs,
+            let request = commands::create_payment_terms::CreatePaymentTermsRequest {
+                payee_str: payee,
+                terms_id: id,
+                amount_usdc_float: *amount_usdc,
+                period_days: days,
                 authority_path: authority.as_deref(),
             };
-            commands::execute_create_plan(tally_client, &request, config).await
+            commands::execute_create_payment_terms(tally_client, &request, config).await
         }
 
-        PlanCommands::List { merchant } => {
+        PaymentTermsCommands::List { payee } => {
             let output_format = match cli.output {
-                Some(OutputFormat::Json) => commands::list_plans::OutputFormat::Json,
-                _ => commands::list_plans::OutputFormat::Human,
+                Some(OutputFormat::Json) => commands::list_payment_terms::OutputFormat::Json,
+                _ => commands::list_payment_terms::OutputFormat::Human,
             };
-            commands::execute_list_plans(tally_client, merchant, &output_format).await
-        }
-
-        PlanCommands::Update {
-            plan,
-            price_usdc,
-            period_days,
-            period_months,
-            grace_days,
-            authority,
-        } => {
-            // Convert USDC to micro-units if provided
-            let new_price = if let Some(p) = price_usdc {
-                Some(usdc_to_micro_units(*p)?)
-            } else {
-                None
-            };
-
-            // Convert period to seconds if provided (prefer days, allow months)
-            let new_period_seconds = period_months.map_or_else(
-                || period_days.map(|d| i64::from(d) * 86400),
-                |months| Some(i64::from(months) * 30 * 86400),
-            );
-
-            // Convert grace period to seconds if provided
-            let new_grace_period_seconds = grace_days.map(|d| i64::from(d) * 86400);
-
-            let request = commands::update_plan_terms::UpdatePlanTermsRequest {
-                plan,
-                new_price,
-                new_period_seconds,
-                new_grace_period_seconds,
-            };
-            commands::execute_update_plan_terms(
-                tally_client,
-                &request,
-                authority.as_deref(),
-                config,
-            )
-            .await
-        }
-
-        PlanCommands::Deactivate {
-            plan,
-            authority,
-            yes,
-            dry_run,
-        } => {
-            commands::execute_deactivate_plan(
-                tally_client,
-                plan,
-                authority.as_deref(),
-                *yes,
-                *dry_run,
-            )
-            .await
+            commands::execute_list_payment_terms(tally_client, payee, &output_format).await
         }
     }
 }
 
-/// Execute subscription commands
-async fn execute_subscription_commands(
+/// Execute agreement commands
+async fn execute_agreement_commands(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
-    command: &SubscriptionCommands,
+    command: &AgreementCommands,
 ) -> Result<String> {
     match command {
-        SubscriptionCommands::List { plan } => {
+        AgreementCommands::List { payment_terms } => {
             let output_format = match cli.output {
-                Some(OutputFormat::Json) => commands::list_subs::OutputFormat::Json,
-                _ => commands::list_subs::OutputFormat::Human,
+                Some(OutputFormat::Json) => commands::list_agreements::OutputFormat::Json,
+                _ => commands::list_agreements::OutputFormat::Human,
             };
-            commands::execute_list_subs(tally_client, plan, &output_format, config).await
+            commands::execute_list_agreements(tally_client, payment_terms, &output_format, config)
+                .await
         }
 
-        SubscriptionCommands::Show { subscription } => {
+        AgreementCommands::Show { agreement } => {
             let output_format = match cli.output {
                 Some(OutputFormat::Json) => "json",
                 _ => "human",
             };
-            let request = commands::show_subscription::ShowSubscriptionRequest {
-                subscription,
+            let request = commands::show_agreement::ShowAgreementRequest {
+                agreement,
                 output_format,
             };
-            commands::execute_show_subscription(tally_client, &request, config).await
+            commands::execute_show_agreement(tally_client, &request, config).await
         }
     }
 }
@@ -858,23 +744,101 @@ fn execute_dashboard_commands(
     cli: &Cli,
     tally_client: &SimpleTallyClient,
     config: &TallyCliConfig,
+    config_file: &ConfigFile,
     command: &DashboardCommands,
 ) -> Result<String> {
+    // Helper to resolve merchant from config when not provided
+    let get_merchant = |merchant_opt: &Option<String>| -> Result<String> {
+        merchant_opt.as_ref().map_or_else(
+            || {
+                config_file.active_profile().map_or_else(
+                    || {
+                        Err(anyhow::anyhow!(
+                            "No active profile configured and merchant not provided.\n\
+                             \n\
+                             Initialize your configuration first:\n\
+                                tally-merchant config init"
+                        ))
+                    },
+                    |profile| {
+                        profile.merchant.as_ref().map_or_else(
+                            || {
+                                Err(anyhow::anyhow!(
+                                    "Merchant not provided and not configured in active profile.\n\
+                                     \n\
+                                     You can fix this by:\n\
+                                     \n\
+                                     1. Pass the merchant as an argument:\n\
+                                        tally-merchant dashboard overview --merchant <MERCHANT_ADDRESS>\n\
+                                     \n\
+                                     2. Or configure it in your profile:\n\
+                                        tally-merchant config set merchant <MERCHANT_ADDRESS>\n\
+                                     \n\
+                                     If you haven't created a merchant yet, run:\n\
+                                        tally-merchant init"
+                                ))
+                            },
+                            |merchant| Ok(merchant.clone()),
+                        )
+                    },
+                )
+            },
+            |merchant| Ok(merchant.clone()),
+        )
+    };
+
+    // Resolve merchant for commands that need it
+    let command_with_merchant = match command {
+        DashboardCommands::Overview { merchant } => {
+            let merchant_addr = get_merchant(merchant)?;
+            DashboardCommands::Overview {
+                merchant: Some(merchant_addr),
+            }
+        }
+        DashboardCommands::Events { merchant, since } => {
+            let merchant_addr = get_merchant(merchant)?;
+            DashboardCommands::Events {
+                merchant: Some(merchant_addr),
+                since: *since,
+            }
+        }
+        DashboardCommands::Subscriptions {
+            merchant,
+            active_only,
+        } => {
+            let merchant_addr = get_merchant(merchant)?;
+            DashboardCommands::Subscriptions {
+                merchant: Some(merchant_addr),
+                active_only: *active_only,
+            }
+        }
+        DashboardCommands::Analytics { .. } => {
+            // Analytics doesn't need merchant, use command as-is
+            command.clone()
+        }
+    };
+
     let output_format = match cli.output {
         Some(OutputFormat::Json) => commands::dashboard::OutputFormat::Json,
         Some(OutputFormat::Csv) => commands::dashboard::OutputFormat::Csv,
         _ => commands::dashboard::OutputFormat::Human,
     };
     let rpc_url = cli.rpc_url.as_deref().unwrap_or(&config.default_rpc_url);
-    commands::dashboard::execute(tally_client, command, &output_format, rpc_url, config)
+    commands::dashboard::execute(
+        tally_client,
+        &command_with_merchant,
+        &output_format,
+        rpc_url,
+        config,
+    )
 }
-
 
 /// Main command router
 async fn execute_command(
     cli: &Cli,
     tally_client: Option<&SimpleTallyClient>,
     config: &TallyCliConfig,
+    config_file: &ConfigFile,
 ) -> Result<String> {
     match &cli.command {
         Commands::Init { skip_plan } => {
@@ -884,21 +848,21 @@ async fn execute_command(
         Commands::Config { command } => {
             execute_config_commands(cli, tally_client, config, command).await
         }
-        Commands::Merchant { command } => {
+        Commands::Payee { command } => {
             let client = require_client(tally_client)?;
-            execute_merchant_commands(cli, client, config, command).await
+            execute_payee_commands(cli, client, config, command).await
         }
-        Commands::Plan { command } => {
+        Commands::PaymentTerms { command } => {
             let client = require_client(tally_client)?;
-            execute_plan_commands(cli, client, config, command).await
+            execute_payment_terms_commands(cli, client, config, command).await
         }
-        Commands::Subscription { command } => {
+        Commands::Agreement { command } => {
             let client = require_client(tally_client)?;
-            execute_subscription_commands(cli, client, config, command).await
+            execute_agreement_commands(cli, client, config, command).await
         }
         Commands::Dashboard { command } => {
             let client = require_client(tally_client)?;
-            execute_dashboard_commands(cli, client, config, command)
+            execute_dashboard_commands(cli, client, config, config_file, command)
         }
         Commands::Completions {
             shell,
@@ -966,7 +930,10 @@ mod tests {
     fn test_usdc_to_micro_units_negative() {
         let result = usdc_to_micro_units(-1.0);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("greater than or equal to 0"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("greater than or equal to 0"));
     }
 
     #[test]
@@ -1002,16 +969,31 @@ mod tests {
 
     #[test]
     fn test_parse_output_format_case_insensitive() {
-        assert!(matches!(parse_output_format("Human").unwrap(), OutputFormat::Human));
-        assert!(matches!(parse_output_format("JSON").unwrap(), OutputFormat::Json));
-        assert!(matches!(parse_output_format("CSV").unwrap(), OutputFormat::Csv));
-        assert!(matches!(parse_output_format("HUMAN").unwrap(), OutputFormat::Human));
+        assert!(matches!(
+            parse_output_format("Human").unwrap(),
+            OutputFormat::Human
+        ));
+        assert!(matches!(
+            parse_output_format("JSON").unwrap(),
+            OutputFormat::Json
+        ));
+        assert!(matches!(
+            parse_output_format("CSV").unwrap(),
+            OutputFormat::Csv
+        ));
+        assert!(matches!(
+            parse_output_format("HUMAN").unwrap(),
+            OutputFormat::Human
+        ));
     }
 
     #[test]
     fn test_parse_output_format_invalid() {
         let result = parse_output_format("invalid");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid output format"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid output format"));
     }
 }

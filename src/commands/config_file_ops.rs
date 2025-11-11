@@ -28,15 +28,37 @@ pub fn init(force: bool) -> Result<String> {
     config.save()?;
 
     let mut output = String::new();
-    writeln!(&mut output, "{} Config file initialized at: {}", Theme::success("✓"), Theme::value(&path.display().to_string()))?;
+    writeln!(
+        &mut output,
+        "{} Config file initialized at: {}",
+        Theme::success("✓"),
+        Theme::value(&path.display().to_string())
+    )?;
     writeln!(&mut output)?;
-    writeln!(&mut output, "{}", Theme::header("Default profiles created:"))?;
-    writeln!(&mut output, "  {} {}", Theme::dim("•"), Theme::active("devnet (active)"))?;
+    writeln!(
+        &mut output,
+        "{}",
+        Theme::header("Default profiles created:")
+    )?;
+    writeln!(
+        &mut output,
+        "  {} {}",
+        Theme::dim("•"),
+        Theme::active("devnet (active)")
+    )?;
     writeln!(&mut output, "  {} mainnet", Theme::dim("•"))?;
     writeln!(&mut output, "  {} localnet", Theme::dim("•"))?;
     writeln!(&mut output)?;
-    writeln!(&mut output, "{}", Theme::dim("Use 'tally-merchant config list' to view configuration"))?;
-    write!(&mut output, "{}", Theme::dim("Use 'tally-merchant config set <key> <value>' to customize"))?;
+    writeln!(
+        &mut output,
+        "{}",
+        Theme::dim("Use 'tally-merchant config list' to view configuration")
+    )?;
+    write!(
+        &mut output,
+        "{}",
+        Theme::dim("Use 'tally-merchant config set <key> <value>' to customize")
+    )?;
     Ok(output)
 }
 
@@ -64,34 +86,56 @@ pub fn list(profile_name: Option<&str>) -> Result<String> {
         .unwrap_or_else(|| "unknown".to_string());
 
     let mut output = String::new();
-    writeln!(&mut output, "{} (profile: {})", Theme::header("Configuration"), Theme::highlight(&profile_name_display))?;
+    writeln!(
+        &mut output,
+        "{} (profile: {})",
+        Theme::header("Configuration"),
+        Theme::highlight(&profile_name_display)
+    )?;
     writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
 
-    writeln!(&mut output, "{:<15} {}", Theme::info("RPC URL:"), Theme::value(&profile_to_show.rpc_url))?;
-    writeln!(&mut output, "{:<15} {}",
+    writeln!(
+        &mut output,
+        "{:<15} {}",
+        Theme::info("RPC URL:"),
+        Theme::value(&profile_to_show.rpc_url)
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Program ID:"),
-        profile_to_show.program_id.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::value(v)
-        ))?;
-    writeln!(&mut output, "{:<15} {}",
+        profile_to_show
+            .program_id
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::value(v))
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("USDC Mint:"),
-        profile_to_show.usdc_mint.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::dim(v)
-        ))?;
-    writeln!(&mut output, "{:<15} {}",
+        profile_to_show
+            .usdc_mint
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::dim(v))
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Merchant:"),
-        profile_to_show.merchant.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::highlight(v)
-        ))?;
-    write!(&mut output, "{:<15} {}",
+        profile_to_show
+            .merchant
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::highlight(v))
+    )?;
+    write!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Wallet Path:"),
-        profile_to_show.wallet_path.as_ref().map_or_else(
-            || Theme::dim("(default)"),
-            |v| Theme::value(v)
-        ))?;
+        profile_to_show
+            .wallet_path
+            .as_ref()
+            .map_or_else(|| Theme::dim("(default)"), |v| Theme::value(v))
+    )?;
 
     Ok(output)
 }
@@ -153,12 +197,19 @@ pub fn set(key: &str, value: &str, profile_name: Option<&str>) -> Result<String>
 
     // Build enhanced feedback message
     let mut output = String::new();
-    writeln!(&mut output, "{} Set {} for profile '{}'",
+    writeln!(
+        &mut output,
+        "{} Set {} for profile '{}'",
         Theme::success("✓"),
         Theme::info(key),
-        Theme::highlight(&target_profile))?;
+        Theme::highlight(&target_profile)
+    )?;
     writeln!(&mut output)?;
-    writeln!(&mut output, "  Profile: {}", Theme::highlight(&target_profile))?;
+    writeln!(
+        &mut output,
+        "  Profile: {}",
+        Theme::highlight(&target_profile)
+    )?;
     writeln!(&mut output, "  Key:     {}", Theme::info(key))?;
 
     if let Some(old) = old_value {
@@ -171,11 +222,17 @@ pub fn set(key: &str, value: &str, profile_name: Option<&str>) -> Result<String>
     // Add helpful hint if they used --profile override
     writeln!(&mut output)?;
     if profile_name.is_some() && original_active.as_deref() != Some(&target_profile) {
-        write!(&mut output, "  Note: Active profile remains '{}'",
-            Theme::highlight(original_active.as_deref().unwrap_or("unknown")))?;
+        write!(
+            &mut output,
+            "  Note: Active profile remains '{}'",
+            Theme::highlight(original_active.as_deref().unwrap_or("unknown"))
+        )?;
     } else {
-        write!(&mut output, "{}",
-            Theme::dim("  To change profiles: tally-merchant config profile use <name>"))?;
+        write!(
+            &mut output,
+            "{}",
+            Theme::dim("  To change profiles: tally-merchant config profile use <name>")
+        )?;
     }
 
     Ok(output)
@@ -216,12 +273,27 @@ pub fn list_profiles() -> Result<String> {
 
         writeln!(&mut output)?;
         writeln!(&mut output, "{name_display}")?;
-        writeln!(&mut output, "  {}: {}", Theme::dim("RPC URL"), profile.rpc_url)?;
+        writeln!(
+            &mut output,
+            "  {}: {}",
+            Theme::dim("RPC URL"),
+            profile.rpc_url
+        )?;
         if let Some(ref program_id) = profile.program_id {
-            writeln!(&mut output, "  {}: {}", Theme::dim("Program ID"), Theme::dim(program_id))?;
+            writeln!(
+                &mut output,
+                "  {}: {}",
+                Theme::dim("Program ID"),
+                Theme::dim(program_id)
+            )?;
         }
         if let Some(ref merchant) = profile.merchant {
-            writeln!(&mut output, "  {}: {}", Theme::dim("Merchant"), Theme::highlight(merchant))?;
+            writeln!(
+                &mut output,
+                "  {}: {}",
+                Theme::dim("Merchant"),
+                Theme::highlight(merchant)
+            )?;
         }
     }
 
@@ -236,7 +308,9 @@ pub fn list_profiles() -> Result<String> {
 pub fn show_active_profile() -> Result<String> {
     let config = ConfigFile::load()?;
 
-    Ok(config.active_profile_name().unwrap_or_else(|| "(none)".to_string()))
+    Ok(config
+        .active_profile_name()
+        .unwrap_or_else(|| "(none)".to_string()))
 }
 
 /// Show specific profile configuration
@@ -251,47 +325,72 @@ pub fn show_profile(profile_name: Option<&str>) -> Result<String> {
     let (name, profile) = if let Some(n) = profile_name {
         // Show specified profile
         let name = n.to_string();
-        let profile = config.get_profile(&name)
+        let profile = config
+            .get_profile(&name)
             .with_context(|| format!("Profile '{name}' not found"))?;
         (name, profile)
     } else {
         // Show active profile
-        let name = config.active_profile_name()
+        let name = config
+            .active_profile_name()
             .context("No active profile set. Run 'tally-merchant config init'")?;
-        let profile = config.get_profile(&name)
+        let profile = config
+            .get_profile(&name)
             .with_context(|| format!("Active profile '{name}' not found"))?;
         (name, profile)
     };
 
     let mut output = String::new();
-    writeln!(&mut output, "{} {}", Theme::header("Profile:"), Theme::highlight(&name))?;
+    writeln!(
+        &mut output,
+        "{} {}",
+        Theme::header("Profile:"),
+        Theme::highlight(&name)
+    )?;
     writeln!(&mut output, "{}", Theme::dim(&"=".repeat(50)))?;
     writeln!(&mut output)?;
-    writeln!(&mut output, "{:<15} {}", Theme::info("RPC URL:"), Theme::value(&profile.rpc_url))?;
-    writeln!(&mut output, "{:<15} {}",
+    writeln!(
+        &mut output,
+        "{:<15} {}",
+        Theme::info("RPC URL:"),
+        Theme::value(&profile.rpc_url)
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Program ID:"),
-        profile.program_id.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::value(v)
-        ))?;
-    writeln!(&mut output, "{:<15} {}",
+        profile
+            .program_id
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::value(v))
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("USDC Mint:"),
-        profile.usdc_mint.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::dim(v)
-        ))?;
-    writeln!(&mut output, "{:<15} {}",
+        profile
+            .usdc_mint
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::dim(v))
+    )?;
+    writeln!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Merchant:"),
-        profile.merchant.as_ref().map_or_else(
-            || Theme::dim("(not set)"),
-            |v| Theme::highlight(v)
-        ))?;
-    write!(&mut output, "{:<15} {}",
+        profile
+            .merchant
+            .as_ref()
+            .map_or_else(|| Theme::dim("(not set)"), |v| Theme::highlight(v))
+    )?;
+    write!(
+        &mut output,
+        "{:<15} {}",
         Theme::info("Wallet Path:"),
-        profile.wallet_path.as_ref().map_or_else(
-            || Theme::dim("(default)"),
-            |v| Theme::value(v)
-        ))?;
+        profile
+            .wallet_path
+            .as_ref()
+            .map_or_else(|| Theme::dim("(default)"), |v| Theme::value(v))
+    )?;
 
     Ok(output)
 }
@@ -330,7 +429,10 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
         eprintln!("{} Switching to 'mainnet' profile", Theme::warning("⚠"));
         eprintln!();
         eprintln!("  This will affect all subsequent commands.");
-        eprintln!("  Current profile: {}", Theme::highlight(old_profile.as_deref().unwrap_or("none")));
+        eprintln!(
+            "  Current profile: {}",
+            Theme::highlight(old_profile.as_deref().unwrap_or("none"))
+        );
         eprintln!();
         eprint!("  Continue? (y/N): ");
 
@@ -344,7 +446,9 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
         }
     }
 
-    let profile = config.profiles.get(profile_name)
+    let profile = config
+        .profiles
+        .get(profile_name)
         .context("Profile not found")?
         .clone();
 
@@ -353,19 +457,30 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
 
     // Build enhanced feedback message
     let mut output = String::new();
-    writeln!(&mut output, "{} Switched to profile '{}'",
+    writeln!(
+        &mut output,
+        "{} Switched to profile '{}'",
         Theme::success("✓"),
-        Theme::highlight(profile_name))?;
+        Theme::highlight(profile_name)
+    )?;
     writeln!(&mut output)?;
 
     if let Some(old) = old_profile {
         writeln!(&mut output, "  Previous: {}", Theme::dim(&old))?;
     }
-    writeln!(&mut output, "  Current:  {}", Theme::highlight(profile_name))?;
+    writeln!(
+        &mut output,
+        "  Current:  {}",
+        Theme::highlight(profile_name)
+    )?;
     writeln!(&mut output)?;
 
     writeln!(&mut output, "  Configuration:")?;
-    writeln!(&mut output, "    rpc_url   = {}", Theme::value(&profile.rpc_url))?;
+    writeln!(
+        &mut output,
+        "    rpc_url   = {}",
+        Theme::value(&profile.rpc_url)
+    )?;
     if let Some(ref program_id) = profile.program_id {
         writeln!(&mut output, "    program_id = {}", Theme::dim(program_id))?;
     }
@@ -373,7 +488,11 @@ pub fn use_profile(profile_name: &str) -> Result<String> {
         writeln!(&mut output, "    usdc_mint  = {}", Theme::dim(usdc_mint))?;
     }
     if let Some(ref merchant) = profile.merchant {
-        writeln!(&mut output, "    merchant   = {}", Theme::highlight(merchant))?;
+        writeln!(
+            &mut output,
+            "    merchant   = {}",
+            Theme::highlight(merchant)
+        )?;
     }
 
     Ok(output)
@@ -413,10 +532,26 @@ pub fn create_profile(
     config.save()?;
 
     let mut output = String::new();
-    writeln!(&mut output, "{} Profile '{}' created with:", Theme::success("✓"), Theme::highlight(name))?;
-    writeln!(&mut output, "  {} RPC URL: {}", Theme::dim("•"), Theme::value(rpc_url))?;
+    writeln!(
+        &mut output,
+        "{} Profile '{}' created with:",
+        Theme::success("✓"),
+        Theme::highlight(name)
+    )?;
+    writeln!(
+        &mut output,
+        "  {} RPC URL: {}",
+        Theme::dim("•"),
+        Theme::value(rpc_url)
+    )?;
     writeln!(&mut output)?;
-    write!(&mut output, "{}", Theme::dim(&format!("Use 'tally-merchant config profile use {name}' to activate")))?;
+    write!(
+        &mut output,
+        "{}",
+        Theme::dim(&format!(
+            "Use 'tally-merchant config profile use {name}' to activate"
+        ))
+    )?;
     Ok(output)
 }
 

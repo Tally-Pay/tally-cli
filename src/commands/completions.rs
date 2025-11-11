@@ -14,10 +14,7 @@ use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 
 /// Completions command arguments
-///
-/// Note: Multiple bools are allowed here as they represent independent CLI flags
 #[derive(Debug, Clone)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct CompletionsArgs {
     pub shell: Shell,
     pub install: bool,
@@ -78,15 +75,38 @@ fn show_installation_guide(shell: Shell, cmd: &mut Command) -> Result<String> {
     let bin_name = "tally-merchant";
 
     let mut output = String::new();
-    writeln!(output, "\n{}\n", "Shell Completion Setup".bright_cyan().bold())?;
+    writeln!(
+        output,
+        "\n{}\n",
+        "Shell Completion Setup".bright_cyan().bold()
+    )?;
 
-    writeln!(output, "Installing completions for {}:\n", shell.to_string().bright_green())?;
+    writeln!(
+        output,
+        "Installing completions for {}:\n",
+        shell.to_string().bright_green()
+    )?;
 
     output.push_str("This will:\n");
-    writeln!(output, "  {} Create completion directory: {}", "•".bright_blue(), config.completion_dir.display())?;
-    writeln!(output, "  {} Write completion script: {}", "•".bright_blue(), config.completion_file.display())?;
+    writeln!(
+        output,
+        "  {} Create completion directory: {}",
+        "•".bright_blue(),
+        config.completion_dir.display()
+    )?;
+    writeln!(
+        output,
+        "  {} Write completion script: {}",
+        "•".bright_blue(),
+        config.completion_file.display()
+    )?;
     if let Some(rc_file) = &config.rc_file {
-        writeln!(output, "  {} Update shell config: {}", "•".bright_blue(), rc_file.display())?;
+        writeln!(
+            output,
+            "  {} Update shell config: {}",
+            "•".bright_blue(),
+            rc_file.display()
+        )?;
     }
     output.push('\n');
 
@@ -134,8 +154,12 @@ fn install_completions(shell: Shell, skip_confirm: bool, cmd: &mut Command) -> R
 
     // Create completion directory if it doesn't exist
     if !config.completion_dir.exists() {
-        fs::create_dir_all(&config.completion_dir)
-            .with_context(|| format!("Failed to create directory: {}", config.completion_dir.display()))?;
+        fs::create_dir_all(&config.completion_dir).with_context(|| {
+            format!(
+                "Failed to create directory: {}",
+                config.completion_dir.display()
+            )
+        })?;
     }
 
     // Generate completion script
@@ -146,8 +170,12 @@ fn install_completions(shell: Shell, skip_confirm: bool, cmd: &mut Command) -> R
     }
 
     // Write completion file
-    fs::write(&config.completion_file, &completion_script)
-        .with_context(|| format!("Failed to write completion file: {}", config.completion_file.display()))?;
+    fs::write(&config.completion_file, &completion_script).with_context(|| {
+        format!(
+            "Failed to write completion file: {}",
+            config.completion_file.display()
+        )
+    })?;
 
     // Update shell RC file if needed
     let mut rc_modified = false;
@@ -159,24 +187,55 @@ fn install_completions(shell: Shell, skip_confirm: bool, cmd: &mut Command) -> R
 
     // Build success message
     let mut output = String::new();
-    writeln!(output, "\n{}\n", "✓ Completions installed successfully".bright_green().bold())?;
+    writeln!(
+        output,
+        "\n{}\n",
+        "✓ Completions installed successfully".bright_green().bold()
+    )?;
 
-    writeln!(output, "Location: {}", config.completion_file.display().to_string().bright_white())?;
+    writeln!(
+        output,
+        "Location: {}",
+        config.completion_file.display().to_string().bright_white()
+    )?;
 
     if rc_modified {
         if let Some(rc_file) = &config.rc_file {
-            writeln!(output, "Modified: {}", rc_file.display().to_string().bright_white())?;
+            writeln!(
+                output,
+                "Modified: {}",
+                rc_file.display().to_string().bright_white()
+            )?;
         }
     }
 
     writeln!(output, "\n{}", "Next steps:".bright_cyan())?;
-    writeln!(output, "  1. Restart your shell, or run: {}", config.reload_command.bright_yellow())?;
-    writeln!(output, "  2. Test with: {} {}", bin_name.bright_yellow(), "<TAB>".bright_yellow())?;
+    writeln!(
+        output,
+        "  1. Restart your shell, or run: {}",
+        config.reload_command.bright_yellow()
+    )?;
+    writeln!(
+        output,
+        "  2. Test with: {} {}",
+        bin_name.bright_yellow(),
+        "<TAB>".bright_yellow()
+    )?;
 
     writeln!(output, "\n{}", "Troubleshooting:".bright_cyan())?;
-    writeln!(output, "  • Completions not working? Check: {}", config.troubleshooting_command.bright_white())?;
-    writeln!(output, "  • Need to reinstall? Run: {bin_name} completions {shell} --install --yes")?;
-    writeln!(output, "  • Uninstall: {bin_name} completions {shell} --uninstall")?;
+    writeln!(
+        output,
+        "  • Completions not working? Check: {}",
+        config.troubleshooting_command.bright_white()
+    )?;
+    writeln!(
+        output,
+        "  • Need to reinstall? Run: {bin_name} completions {shell} --install --yes"
+    )?;
+    writeln!(
+        output,
+        "  • Uninstall: {bin_name} completions {shell} --uninstall"
+    )?;
 
     Ok(output)
 }
@@ -186,7 +245,11 @@ fn show_installation_plan(shell: Shell) -> Result<String> {
     let config = get_shell_config(shell)?;
 
     let mut output = String::new();
-    writeln!(output, "\n{}\n", "Installation Plan (dry run)".bright_cyan().bold())?;
+    writeln!(
+        output,
+        "\n{}\n",
+        "Installation Plan (dry run)".bright_cyan().bold()
+    )?;
 
     writeln!(output, "Shell: {}\n", shell.to_string().bright_green())?;
 
@@ -203,16 +266,33 @@ fn show_installation_plan(shell: Shell) -> Result<String> {
     }
 
     if config.completion_dir.exists() {
-        writeln!(output, "{} Directory exists: {}", "✓".bright_green(), config.completion_dir.display())?;
+        writeln!(
+            output,
+            "{} Directory exists: {}",
+            "✓".bright_green(),
+            config.completion_dir.display()
+        )?;
     } else {
-        writeln!(output, "{} Will create directory: {}", "•".bright_blue(), config.completion_dir.display())?;
+        writeln!(
+            output,
+            "{} Will create directory: {}",
+            "•".bright_blue(),
+            config.completion_dir.display()
+        )?;
     }
 
     if config.completion_file.exists() {
-        writeln!(output, "{} Will overwrite existing file", "⚠".bright_yellow())?;
+        writeln!(
+            output,
+            "{} Will overwrite existing file",
+            "⚠".bright_yellow()
+        )?;
     }
 
-    writeln!(output, "\nTo install, run:\n  tally-merchant completions {shell} --install")?;
+    writeln!(
+        output,
+        "\nTo install, run:\n  tally-merchant completions {shell} --install"
+    )?;
 
     Ok(output)
 }
@@ -222,7 +302,10 @@ fn uninstall_completions(shell: Shell, skip_confirm: bool) -> Result<String> {
     let config = get_shell_config(shell)?;
 
     if !config.completion_file.exists() {
-        return Ok(format!("{} Completions are not installed", "ℹ".bright_blue()));
+        return Ok(format!(
+            "{} Completions are not installed",
+            "ℹ".bright_blue()
+        ));
     }
 
     if !skip_confirm {
@@ -240,22 +323,45 @@ fn uninstall_completions(shell: Shell, skip_confirm: bool) -> Result<String> {
     }
 
     // Remove completion file
-    fs::remove_file(&config.completion_file)
-        .with_context(|| format!("Failed to remove completion file: {}", config.completion_file.display()))?;
+    fs::remove_file(&config.completion_file).with_context(|| {
+        format!(
+            "Failed to remove completion file: {}",
+            config.completion_file.display()
+        )
+    })?;
 
     let mut output = String::new();
-    writeln!(output, "\n{}\n", "✓ Completions uninstalled successfully".bright_green().bold())?;
-    writeln!(output, "Removed: {}", config.completion_file.display().to_string().bright_white())?;
+    writeln!(
+        output,
+        "\n{}\n",
+        "✓ Completions uninstalled successfully"
+            .bright_green()
+            .bold()
+    )?;
+    writeln!(
+        output,
+        "Removed: {}",
+        config.completion_file.display().to_string().bright_white()
+    )?;
 
     if let Some(rc_file) = &config.rc_file {
-        writeln!(output, "\n{} The following line in {} was not removed:", "ℹ".bright_blue(), rc_file.display())?;
+        writeln!(
+            output,
+            "\n{} The following line in {} was not removed:",
+            "ℹ".bright_blue(),
+            rc_file.display()
+        )?;
         if let Some(rc_line) = &config.rc_line_to_add {
             writeln!(output, "  {}", rc_line.bright_white())?;
         }
         output.push_str("\nYou may want to remove it manually if no longer needed.\n");
     }
 
-    writeln!(output, "\nRestart your shell or run: {}", config.reload_command.bright_yellow())?;
+    writeln!(
+        output,
+        "\nRestart your shell or run: {}",
+        config.reload_command.bright_yellow()
+    )?;
 
     Ok(output)
 }
@@ -280,7 +386,10 @@ fn get_shell_config(shell: Shell) -> Result<ShellConfig> {
             let completion_dir = home.join(".zsh").join("completions");
             let completion_file = completion_dir.join(format!("_{bin_name}"));
             let rc_file = Some(home.join(".zshrc"));
-            let rc_line_to_add = Some(format!("fpath=({}/.zsh/completions $fpath)", home.display()));
+            let rc_line_to_add = Some(format!(
+                "fpath=({}/.zsh/completions $fpath)",
+                home.display()
+            ));
 
             Ok(ShellConfig {
                 completion_dir,
@@ -364,7 +473,10 @@ fn ensure_rc_line(rc_file: &PathBuf, line_to_add: &str) -> Result<bool> {
     };
 
     // Check if line already exists
-    if content.lines().any(|line| line.trim() == line_to_add.trim()) {
+    if content
+        .lines()
+        .any(|line| line.trim() == line_to_add.trim())
+    {
         return Ok(false); // Already exists, no modification needed
     }
 
@@ -398,29 +510,36 @@ fn insert_before_zsh_framework(content: &str, line_to_add: &str) -> String {
     ];
 
     // Find the first framework initialization line
-    lines.iter().position(|line| {
-        let trimmed = line.trim();
-        framework_patterns.iter().any(|pattern| trimmed.contains(pattern))
-    }).map_or_else(
-        || {
-            // No framework found, append at the end
-            append_line(content, line_to_add)
-        },
-        |pos| {
-            // Insert before the framework line with a comment
-            let mut result = String::new();
-            for (i, line) in lines.iter().enumerate() {
-                if i == pos {
-                    result.push_str("# Custom completion directories (must be before framework init)\n");
-                    result.push_str(line_to_add);
+    lines
+        .iter()
+        .position(|line| {
+            let trimmed = line.trim();
+            framework_patterns
+                .iter()
+                .any(|pattern| trimmed.contains(pattern))
+        })
+        .map_or_else(
+            || {
+                // No framework found, append at the end
+                append_line(content, line_to_add)
+            },
+            |pos| {
+                // Insert before the framework line with a comment
+                let mut result = String::new();
+                for (i, line) in lines.iter().enumerate() {
+                    if i == pos {
+                        result.push_str(
+                            "# Custom completion directories (must be before framework init)\n",
+                        );
+                        result.push_str(line_to_add);
+                        result.push('\n');
+                    }
+                    result.push_str(line);
                     result.push('\n');
                 }
-                result.push_str(line);
-                result.push('\n');
-            }
-            result
-        }
-    )
+                result
+            },
+        )
 }
 
 /// Append line to content

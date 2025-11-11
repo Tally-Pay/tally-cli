@@ -1,280 +1,11 @@
 //! Output formatting utilities for the Tally CLI
 
 use crate::config::TallyCliConfig;
-use crate::utils::colors::{terminal_width, truncate_to_width, Theme};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tally_sdk::solana_sdk::pubkey::Pubkey;
-
-/// Plan information for display
-#[derive(Debug)]
-pub struct PlanInfo {
-    pub address: Pubkey,
-    pub plan_id: String,
-    pub name: String,
-    pub price_usdc: f64,
-    pub period: String,
-    pub grace_secs: u64,
-    pub active: bool,
-}
-
-/// Subscription information for display
-#[derive(Debug)]
-pub struct SubscriptionInfo {
-    pub address: Pubkey,
-    pub plan: Pubkey,
-    pub subscriber: Pubkey,
-    pub next_renewal_ts: i64,
-    pub active: bool,
-    pub renewals: u32,
-    pub created_ts: i64,
-    pub last_amount: u64,
-}
-
-/// Format plans for human-readable output
-#[must_use]
-pub fn format_plans_human(plans: &[PlanInfo], merchant_pda: &Pubkey) -> String {
-    use std::fmt::Write;
-
-    if plans.is_empty() {
-        return format!(
-            "{} {}",
-            Theme::warning("No plans found for merchant:"),
-            Theme::dim(&merchant_pda.to_string())
-        );
-    }
-
-    let mut output = String::new();
-    writeln!(
-        &mut output,
-        "{} {}\n",
-        Theme::header("Plans for merchant:"),
-        Theme::highlight(&merchant_pda.to_string())
-    )
-    .unwrap();
-
-    // Get terminal width for responsive layout
-    let term_width = terminal_width();
-    let available_width = term_width.saturating_sub(10);
-
-    // Adjust column widths based on terminal size
-    let (id_width, name_width, addr_width) = if available_width < 120 {
-        // Narrow terminal - truncate columns
-        (12, 15, 20)
-    } else {
-        // Wide terminal - full widths
-        (15, 20, 44)
-    };
-
-    // Header with colors
-    writeln!(
-        &mut output,
-        "{:<id_width$} {:<name_width$} {:<12} {:<15} {:<10} {:<8} {:<addr_width$}",
-        Theme::header("Plan ID"),
-        Theme::header("Name"),
-        Theme::header("Price (USDC)"),
-        Theme::header("Period"),
-        Theme::header("Grace (s)"),
-        Theme::header("Active"),
-        Theme::header("Address"),
-        id_width = id_width,
-        name_width = name_width,
-        addr_width = addr_width
-    )
-    .unwrap();
-    output.push_str(&Theme::dim(&"-".repeat(available_width.min(140))).to_string());
-    output.push('\n');
-
-    // Data rows
-    for plan in plans {
-        let id_truncated = truncate_to_width(&plan.plan_id, id_width);
-        let name_truncated = truncate_to_width(&plan.name, name_width);
-        let addr_truncated = truncate_to_width(&plan.address.to_string(), addr_width);
-        let active_text = if plan.active {
-            Theme::active("Yes").to_string()
-        } else {
-            Theme::inactive("No").to_string()
-        };
-
-        writeln!(
-            &mut output,
-            "{:<id_width$} {:<name_width$} {:<12.6} {:<15} {:<10} {:<8} {}",
-            id_truncated,
-            name_truncated,
-            plan.price_usdc,
-            plan.period,
-            plan.grace_secs,
-            active_text,
-            Theme::dim(&addr_truncated),
-            id_width = id_width,
-            name_width = name_width
-        )
-        .unwrap();
-    }
-
-    write!(
-        &mut output,
-        "\n{} {}",
-        Theme::info("Total plans:"),
-        Theme::value(&plans.len().to_string())
-    )
-    .unwrap();
-    output
-}
-
-/// Format plans for JSON output
-///
-/// # Errors
-///
-/// Returns an error if JSON serialization fails
-pub fn format_plans_json(plans: &[PlanInfo]) -> Result<String> {
-    let json_plans: Vec<serde_json::Value> = plans
-        .iter()
-        .map(|plan| {
-            serde_json::json!({
-                "address": plan.address.to_string(),
-                "plan_id": plan.plan_id,
-                "name": plan.name,
-                "price_usdc": plan.price_usdc,
-                "period": plan.period,
-                "grace_secs": plan.grace_secs,
-                "active": plan.active
-            })
-        })
-        .collect();
-
-    serde_json::to_string_pretty(&json_plans)
-        .map_err(|e| anyhow!("Failed to serialize plans to JSON: {e}"))
-}
-
-/// Format subscriptions for human-readable output
-#[must_use]
-pub fn format_subscriptions_human(
-    subscriptions: &[SubscriptionInfo],
-    plan_pda: &Pubkey,
-    config: &TallyCliConfig,
-) -> String {
-    use std::fmt::Write;
-
-    if subscriptions.is_empty() {
-        return format!(
-            "{} {}",
-            Theme::warning("No subscriptions found for plan:"),
-            Theme::dim(&plan_pda.to_string())
-        );
-    }
-
-    let mut output = String::new();
-    writeln!(
-        &mut output,
-        "{} {}\n",
-        Theme::header("Subscriptions for plan:"),
-        Theme::highlight(&plan_pda.to_string())
-    )
-    .unwrap();
-
-    // Get terminal width for responsive layout
-    let term_width = terminal_width();
-    let available_width = term_width.saturating_sub(10);
-
-    // Adjust column widths based on terminal size
-    let (subscriber_width, addr_width) = if available_width < 120 {
-        // Narrow terminal - truncate columns
-        (20, 20)
-    } else {
-        // Wide terminal - full widths
-        (44, 44)
-    };
-
-    // Header with colors
-    writeln!(
-        &mut output,
-        "{:<subscriber_width$} {:<8} {:<9} {:<20} {:<20} {:<12} {:<addr_width$}",
-        Theme::header("Subscriber"),
-        Theme::header("Status"),
-        Theme::header("Renewals"),
-        Theme::header("Next Renewal"),
-        Theme::header("Created"),
-        Theme::header("Last Amount"),
-        Theme::header("Address"),
-        subscriber_width = subscriber_width,
-        addr_width = addr_width
-    )
-    .unwrap();
-    output.push_str(&Theme::dim(&"-".repeat(available_width.min(175))).to_string());
-    output.push('\n');
-
-    // Data rows
-    for sub in subscriptions {
-        let next_renewal = format_timestamp(sub.next_renewal_ts);
-        let created = format_timestamp(sub.created_ts);
-        let last_amount_usdc = config.format_usdc(sub.last_amount);
-
-        let subscriber_truncated = truncate_to_width(&sub.subscriber.to_string(), subscriber_width);
-        let addr_truncated = truncate_to_width(&sub.address.to_string(), addr_width);
-        let status_text = if sub.active {
-            Theme::active("Active").to_string()
-        } else {
-            Theme::inactive("Inactive").to_string()
-        };
-
-        writeln!(
-            &mut output,
-            "{:<subscriber_width$} {:<8} {:<9} {:<20} {:<20} {:<12.6} {}",
-            subscriber_truncated,
-            status_text,
-            sub.renewals,
-            next_renewal,
-            created,
-            last_amount_usdc,
-            Theme::dim(&addr_truncated),
-            subscriber_width = subscriber_width
-        )
-        .unwrap();
-    }
-
-    write!(
-        &mut output,
-        "\n{} {}",
-        Theme::info("Total subscriptions:"),
-        Theme::value(&subscriptions.len().to_string())
-    )
-    .unwrap();
-    output
-}
-
-/// Format subscriptions for JSON output
-///
-/// # Errors
-///
-/// Returns an error if JSON serialization fails
-pub fn format_subscriptions_json(
-    subscriptions: &[SubscriptionInfo],
-    config: &TallyCliConfig,
-) -> Result<String> {
-    let json_subscriptions: Vec<serde_json::Value> = subscriptions
-        .iter()
-        .map(|sub| {
-            serde_json::json!({
-                "address": sub.address.to_string(),
-                "plan": sub.plan.to_string(),
-                "subscriber": sub.subscriber.to_string(),
-                "next_renewal_ts": sub.next_renewal_ts,
-                "next_renewal": format_timestamp(sub.next_renewal_ts),
-                "active": sub.active,
-                "renewals": sub.renewals,
-                "created_ts": sub.created_ts,
-                "created": format_timestamp(sub.created_ts),
-                "last_amount": sub.last_amount,
-                "last_amount_usdc": config.format_usdc(sub.last_amount)
-            })
-        })
-        .collect();
-
-    serde_json::to_string_pretty(&json_subscriptions)
-        .map_err(|e| anyhow!("Failed to serialize subscriptions to JSON: {e}"))
-}
+use tally_sdk::{PaymentPeriod, UsdcAmount};
 
 /// Detect network type from RPC URL
 ///
@@ -348,6 +79,225 @@ pub fn format_timestamp(timestamp: i64) -> String {
         )
 }
 
+// Payment Terms formatting structures and functions
+
+#[derive(Debug, Clone)]
+pub struct PaymentTermsInfo {
+    pub address: Pubkey,
+    pub terms_id: String,
+    pub amount: UsdcAmount,
+    pub period: PaymentPeriod,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgreementInfo {
+    pub address: Pubkey,
+    pub payment_terms: Pubkey,
+    pub payer: Pubkey,
+    pub next_payment_ts: i64,
+    pub active: bool,
+    pub payment_count: u32,
+    pub created_ts: i64,
+    pub last_amount: UsdcAmount,
+}
+
+/// Format payment terms for human-readable output
+#[must_use]
+pub fn format_payment_terms_human(terms_list: &[PaymentTermsInfo], payee_pda: &Pubkey) -> String {
+    use crate::utils::colors::Theme;
+    use std::fmt::Write;
+
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::header("Payment Terms for Payee")).unwrap();
+    writeln!(
+        &mut output,
+        "{} {}",
+        Theme::info("Payee:"),
+        Theme::highlight(&payee_pda.to_string())
+    )
+    .unwrap();
+    writeln!(
+        &mut output,
+        "{} {}",
+        Theme::info("Total Terms:"),
+        Theme::value(&terms_list.len().to_string())
+    )
+    .unwrap();
+    writeln!(&mut output).unwrap();
+
+    if terms_list.is_empty() {
+        writeln!(
+            &mut output,
+            "{}",
+            Theme::warning("No payment terms found for this payee")
+        )
+        .unwrap();
+    } else {
+        for terms in terms_list {
+            writeln!(
+                &mut output,
+                "{} {}",
+                Theme::info("Terms ID:"),
+                Theme::value(&terms.terms_id)
+            )
+            .unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Amount:"),
+                terms.amount
+            )
+            .unwrap();
+            writeln!(&mut output, "  {} {}", Theme::dim("Period:"), terms.period).unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Address:"),
+                Theme::dim(&terms.address.to_string())
+            )
+            .unwrap();
+            writeln!(&mut output).unwrap();
+        }
+    }
+
+    output
+}
+
+/// Format payment terms for JSON output
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails
+pub fn format_payment_terms_json(terms_list: &[PaymentTermsInfo]) -> Result<String> {
+    let json = serde_json::to_string_pretty(&serde_json::json!({
+        "payment_terms": terms_list.iter().map(|t| serde_json::json!({
+            "address": t.address.to_string(),
+            "terms_id": t.terms_id,
+            "amount_usdc": t.amount.usdc(),
+            "amount_microlamports": t.amount.microlamports(),
+            "period_seconds": t.period.seconds(),
+            "period_days": t.period.as_days(),
+            "period_display": t.period.to_string(),
+        })).collect::<Vec<_>>(),
+        "count": terms_list.len(),
+    }))?;
+    Ok(json)
+}
+
+/// Format payment agreements for human-readable output
+#[must_use]
+pub fn format_agreements_human(
+    agreements: &[AgreementInfo],
+    payment_terms_pda: &Pubkey,
+    _config: &TallyCliConfig,
+) -> String {
+    use crate::utils::colors::Theme;
+    use std::fmt::Write;
+
+    let mut output = String::new();
+    writeln!(&mut output, "{}", Theme::header("Payment Agreements")).unwrap();
+    writeln!(
+        &mut output,
+        "{} {}",
+        Theme::info("Payment Terms:"),
+        Theme::highlight(&payment_terms_pda.to_string())
+    )
+    .unwrap();
+    writeln!(
+        &mut output,
+        "{} {}",
+        Theme::info("Total Agreements:"),
+        Theme::value(&agreements.len().to_string())
+    )
+    .unwrap();
+    writeln!(&mut output).unwrap();
+
+    if agreements.is_empty() {
+        writeln!(
+            &mut output,
+            "{}",
+            Theme::warning("No payment agreements found for these terms")
+        )
+        .unwrap();
+    } else {
+        for agreement in agreements {
+            let status = if agreement.active {
+                Theme::active("Active")
+            } else {
+                Theme::inactive("Paused")
+            };
+            writeln!(
+                &mut output,
+                "{} {}",
+                Theme::info("Payer:"),
+                Theme::value(&agreement.payer.to_string())
+            )
+            .unwrap();
+            writeln!(&mut output, "  {} {}", Theme::dim("Status:"), status).unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Payment Count:"),
+                agreement.payment_count
+            )
+            .unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Last Amount:"),
+                agreement.last_amount
+            )
+            .unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Next Payment:"),
+                format_timestamp(agreement.next_payment_ts)
+            )
+            .unwrap();
+            writeln!(
+                &mut output,
+                "  {} {}",
+                Theme::dim("Address:"),
+                Theme::dim(&agreement.address.to_string())
+            )
+            .unwrap();
+            writeln!(&mut output).unwrap();
+        }
+    }
+
+    output
+}
+
+/// Format payment agreements for JSON output
+///
+/// # Errors
+///
+/// Returns an error if JSON serialization fails
+pub fn format_agreements_json(
+    agreements: &[AgreementInfo],
+    _config: &TallyCliConfig,
+) -> Result<String> {
+    let json = serde_json::to_string_pretty(&serde_json::json!({
+        "agreements": agreements.iter().map(|a| serde_json::json!({
+            "address": a.address.to_string(),
+            "payment_terms": a.payment_terms.to_string(),
+            "payer": a.payer.to_string(),
+            "next_payment_ts": a.next_payment_ts,
+            "next_payment_human": format_timestamp(a.next_payment_ts),
+            "active": a.active,
+            "payment_count": a.payment_count,
+            "last_amount_microlamports": a.last_amount.microlamports(),
+            "last_amount_usdc": a.last_amount.usdc(),
+            "last_amount_display": a.last_amount.to_string(),
+            "created_ts": a.created_ts,
+            "created_human": format_timestamp(a.created_ts),
+        })).collect::<Vec<_>>(),
+        "count": agreements.len(),
+    }))?;
+    Ok(json)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,22 +311,13 @@ mod tests {
 
     #[test]
     fn test_detect_network_devnet() {
-        assert_eq!(
-            detect_network("https://api.devnet.solana.com"),
-            "devnet"
-        );
-        assert_eq!(
-            detect_network("http://api.devnet.solana.com"),
-            "devnet"
-        );
+        assert_eq!(detect_network("https://api.devnet.solana.com"), "devnet");
+        assert_eq!(detect_network("http://api.devnet.solana.com"), "devnet");
     }
 
     #[test]
     fn test_detect_network_testnet() {
-        assert_eq!(
-            detect_network("https://api.testnet.solana.com"),
-            "testnet"
-        );
+        assert_eq!(detect_network("https://api.testnet.solana.com"), "testnet");
     }
 
     #[test]
@@ -385,30 +326,18 @@ mod tests {
             detect_network("https://api.mainnet-beta.solana.com"),
             "mainnet"
         );
-        assert_eq!(
-            detect_network("https://mainnet.helius-rpc.com"),
-            "mainnet"
-        );
+        assert_eq!(detect_network("https://mainnet.helius-rpc.com"), "mainnet");
     }
 
     #[test]
     fn test_detect_network_custom() {
-        assert_eq!(
-            detect_network("https://custom-rpc.example.com"),
-            "custom"
-        );
-        assert_eq!(
-            detect_network("https://my-private-node.com:8899"),
-            "custom"
-        );
+        assert_eq!(detect_network("https://custom-rpc.example.com"), "custom");
+        assert_eq!(detect_network("https://my-private-node.com:8899"), "custom");
     }
 
     #[test]
     fn test_detect_network_case_insensitive() {
-        assert_eq!(
-            detect_network("HTTPS://API.DEVNET.SOLANA.COM"),
-            "devnet"
-        );
+        assert_eq!(detect_network("HTTPS://API.DEVNET.SOLANA.COM"), "devnet");
         assert_eq!(detect_network("HTTP://LOCALHOST:8899"), "localnet");
     }
 }

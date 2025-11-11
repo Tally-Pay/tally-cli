@@ -1,8 +1,8 @@
-//! List subscriptions command implementation
+//! List payment agreements command implementation
 
 use crate::{
     config::TallyCliConfig,
-    utils::formatting::{format_subscriptions_human, format_subscriptions_json, SubscriptionInfo},
+    utils::formatting::{format_agreements_human, format_agreements_json, AgreementInfo},
 };
 use anyhow::{anyhow, Context, Result};
 use clap::ValueEnum;
@@ -17,76 +17,80 @@ pub enum OutputFormat {
     Json,
 }
 
-/// Execute the list subscriptions command
+/// Execute the list agreements command
 ///
 /// # Errors
-/// Returns error if subscription listing fails due to network issues or invalid plan PDA
-#[allow(clippy::cognitive_complexity)] // Complex data processing and formatting
+/// Returns error if agreement listing fails due to network issues or invalid payment terms PDA
 pub async fn execute(
     tally_client: &SimpleTallyClient,
-    plan_str: &str,
+    payment_terms_str: &str,
     output_format: &OutputFormat,
     config: &TallyCliConfig,
 ) -> Result<String> {
-    info!("Starting subscription listing for plan: {}", plan_str);
+    info!(
+        "Starting payment agreement listing for payment terms: {}",
+        payment_terms_str
+    );
 
-    // Parse plan PDA address
-    let plan_pda = Pubkey::from_str(plan_str)
-        .map_err(|e| anyhow!("Invalid plan PDA address '{plan_str}': {e}"))?;
-    info!("Using plan PDA: {}", plan_pda);
+    // Parse payment terms PDA address
+    let payment_terms_pda = Pubkey::from_str(payment_terms_str)
+        .map_err(|e| anyhow!("Invalid payment terms PDA address '{payment_terms_str}': {e}"))?;
+    info!("Using payment terms PDA: {}", payment_terms_pda);
 
-    // Validate plan exists
+    // Validate payment terms exists
     if !tally_client
-        .account_exists(&plan_pda)
-        .context("Failed to check if plan account exists - check RPC connection")?
+        .account_exists(&payment_terms_pda)
+        .context("Failed to check if payment terms account exists - check RPC connection")?
     {
         return Err(anyhow!(
-            "Plan account does not exist at address: {plan_pda}"
+            "Payment terms account does not exist at address: {payment_terms_pda}"
         ));
     }
 
-    info!("Querying subscriptions using tally-sdk...");
+    info!("Querying payment agreements using tally-sdk...");
 
-    // Use tally-sdk to get all subscriptions for this plan
-    let subscription_accounts = tally_client
-        .list_subscriptions(&plan_pda)
-        .context("Failed to fetch subscriptions - check RPC connection and plan account state")?;
+    // Use tally-sdk to get all agreements for this payment terms
+    let agreement_accounts = tally_client
+        .list_payment_agreements(&payment_terms_pda)
+        .context(
+            "Failed to fetch agreements - check RPC connection and payment terms account state",
+        )?;
 
     info!(
-        "Found {} subscription accounts",
-        subscription_accounts.len()
+        "Found {} payment agreement accounts",
+        agreement_accounts.len()
     );
 
-    // Parse and format subscription data
-    let mut subscriptions = Vec::new();
-    for (pubkey, subscription) in subscription_accounts {
-        let sub_info = SubscriptionInfo {
+    // Parse and format agreement data
+    let mut agreements = Vec::new();
+    for (pubkey, agreement) in agreement_accounts {
+        let agreement_info = AgreementInfo {
             address: pubkey,
-            plan: subscription.plan,
-            subscriber: subscription.subscriber,
-            next_renewal_ts: subscription.next_renewal_ts,
-            active: subscription.active,
-            renewals: subscription.renewals,
-            created_ts: subscription.created_ts,
-            last_amount: subscription.last_amount,
+            payment_terms: agreement.payment_terms,
+            payer: agreement.payer,
+            next_payment_ts: agreement.next_payment_ts,
+            active: agreement.active,
+            payment_count: agreement.payment_count,
+            created_ts: agreement.created_ts,
+            last_amount: tally_sdk::UsdcAmount::from_microlamports(agreement.last_amount),
         };
         info!(
-            "Parsed subscription: {} (subscriber: {})",
-            pubkey, subscription.subscriber
+            "Parsed payment agreement: {} (payer: {})",
+            pubkey, agreement.payer
         );
-        subscriptions.push(sub_info);
+        agreements.push(agreement_info);
     }
 
-    // Sort subscriptions by created timestamp for consistent output
-    subscriptions.sort_by(|a, b| a.created_ts.cmp(&b.created_ts));
+    // Sort agreements by created timestamp for consistent output
+    agreements.sort_by(|a, b| a.created_ts.cmp(&b.created_ts));
 
     // Format output based on requested format
     match output_format {
-        OutputFormat::Human => Ok(format_subscriptions_human(
-            &subscriptions,
-            &plan_pda,
+        OutputFormat::Human => Ok(format_agreements_human(
+            &agreements,
+            &payment_terms_pda,
             config,
         )),
-        OutputFormat::Json => format_subscriptions_json(&subscriptions, config),
+        OutputFormat::Json => format_agreements_json(&agreements, config),
     }
 }

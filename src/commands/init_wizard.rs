@@ -4,11 +4,11 @@
 //! - Interactive wallet selection with balance display
 //! - Pre-flight checks (RPC connectivity, SOL balance)
 //! - Interactive prompts for treasury and fee setup
-//! - Merchant initialization
+//! - Payee initialization
 //! - Optional first plan creation
 
 use crate::config::TallyCliConfig;
-use crate::errors::enhance_merchant_init_error;
+use crate::errors::enhance_payee_init_error;
 use crate::utils::formatting::detect_network;
 use crate::utils::progress;
 use anyhow::{anyhow, Context, Result};
@@ -20,16 +20,19 @@ use tally_sdk::solana_sdk::signature::{Keypair, Signer};
 use tally_sdk::{get_usdc_mint, load_keypair, SimpleTallyClient};
 
 /// Minimum SOL balance required for merchant initialization (0.01 SOL for rent + fees)
-const MIN_SOL_BALANCE: f64 = 0.01;
+const MIN_SOL_BALANCE_LAMPORTS: u64 = 10_000_000; // 0.01 SOL in lamports
 
 /// Lamports per SOL
-const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
+const LAMPORTS_PER_SOL_U64: u64 = 1_000_000_000;
 
-/// Convert lamports to SOL
-fn lamports_to_sol(lamports: u64) -> f64 {
-    #[allow(clippy::cast_precision_loss)]
-    let lamports_f64 = lamports as f64;
-    lamports_f64 / LAMPORTS_PER_SOL
+/// Convert lamports to SOL for display purposes
+///
+/// Uses integer arithmetic to avoid f64 precision loss.
+/// Returns formatted string with 9 decimal places.
+fn lamports_to_sol(lamports: u64) -> String {
+    let whole = lamports / LAMPORTS_PER_SOL_U64;
+    let fractional = lamports % LAMPORTS_PER_SOL_U64;
+    format!("{whole}.{fractional:09}")
 }
 
 /// Execute the interactive initialization wizard
@@ -41,7 +44,7 @@ pub async fn execute(
     _config: &TallyCliConfig,
     skip_plan: bool,
 ) -> Result<String> {
-    println!("\n🚀 Welcome to Tally! Let's set up your merchant account.\n");
+    println!("\n🚀 Welcome to Tally! Let's set up your payee account.\n");
 
     // Step 1: Wallet selection (with info display and progressive disclosure)
     let wallet = prompt_wallet_selection(tally_client)?;
@@ -65,11 +68,11 @@ pub async fn execute(
         .get_balance_with_commitment(&wallet.pubkey(), CommitmentConfig::confirmed())
         .context("Failed to get wallet balance")?
         .value;
-    let balance_sol = lamports_to_sol(balance);
-    println!("✓ {balance_sol:.6} SOL");
+    let balance_sol_str = lamports_to_sol(balance);
+    println!("✓ {balance_sol_str} SOL");
 
-    if balance_sol < MIN_SOL_BALANCE {
-        handle_insufficient_balance(balance_sol)?;
+    if balance < MIN_SOL_BALANCE_LAMPORTS {
+        handle_insufficient_balance(balance)?;
     }
 
     println!("\n✅ All pre-flight checks passed!\n");
@@ -78,7 +81,7 @@ pub async fn execute(
     let treasury_ata = prompt_treasury_setup(tally_client, &wallet)?;
 
     // Step 4: Initialize merchant
-    println!("\nInitializing merchant account...");
+    println!("\nInitializing payee account...");
     println!("   • Your merchant will be created on the Free tier (2.0% platform fee)");
     println!("   • Contact platform authority to upgrade to Pro (1.5%) or Enterprise (1.0%)\n");
 
@@ -87,12 +90,12 @@ pub async fn execute(
     // Use progress spinner for transaction
     let spinner = progress::create_spinner("Submitting merchant initialization transaction...");
     let result = tally_client
-        .initialize_merchant_with_treasury(&wallet, &usdc_mint, &treasury_ata)
-        .map_err(|e| enhance_merchant_init_error(&e, &wallet.pubkey(), &treasury_ata));
+        .init_payee_with_treasury(&wallet, &usdc_mint, &treasury_ata)
+        .map_err(|e| enhance_payee_init_error(&e, &wallet.pubkey(), &treasury_ata));
 
     match &result {
         Ok(_) => progress::finish_progress_success(&spinner, "Merchant account created"),
-        Err(_) => progress::finish_progress_error(&spinner, "Failed to create merchant account"),
+        Err(_) => progress::finish_progress_error(&spinner, "Failed to create payee account"),
     }
 
     let (merchant_pda, signature, created_ata) = result?;
@@ -109,14 +112,14 @@ pub async fn execute(
         "Merchant Setup Complete!\n\
          ═══════════════════════════════════════════════════\n\
          \n\
-         Merchant PDA:       {}\n\
+         Payee PDA:       {}\n\
          Authority:          {}\n\
          Treasury ATA:       {}\n\
          Tier:               Free (platform fee: 200 bps / 2.0%)\n\
          Transaction:        {}\n\
          Status:             {}\n\
          \n\
-         ✓ Merchant PDA saved to config file\n\
+         ✓ Payee PDA saved to config file\n\
          \n\
          Note: New merchants start on the Free tier.\n\
          Contact the platform authority to upgrade tiers.\n\
@@ -197,7 +200,7 @@ fn prompt_wallet_selection(tally_client: &SimpleTallyClient) -> Result<Keypair> 
         // Show wallet info
         println!("Found wallet: {default_path}");
         println!("Address: {}", wallet.pubkey());
-        println!("Balance: {balance_sol:.6} SOL\n");
+        println!("Balance: {balance_sol} SOL\n");
 
         // Ask confirmation
         let use_default = Confirm::new()
@@ -265,11 +268,13 @@ fn expand_tilde(path: &str) -> String {
 ///
 /// # Errors
 /// Returns error after user makes a choice (to exit the wizard)
-fn handle_insufficient_balance(balance_sol: f64) -> Result<()> {
+fn handle_insufficient_balance(balance_lamports: u64) -> Result<()> {
+    let balance_sol = lamports_to_sol(balance_lamports);
+    let min_sol = lamports_to_sol(MIN_SOL_BALANCE_LAMPORTS);
     println!(
         "\n❌ Insufficient SOL balance\n\
          \n\
-         You have {balance_sol:.6} SOL, but need at least {MIN_SOL_BALANCE:.6} SOL\n\
+         You have {balance_sol} SOL, but need at least {min_sol} SOL\n\
          for transaction fees and rent.\n\
          \n\
          Get SOL at:\n\
@@ -293,8 +298,9 @@ fn handle_insufficient_balance(balance_sol: f64) -> Result<()> {
     match selection {
         0 => {
             // Fund and retry - currently just exits with helpful message
+            let min_sol = lamports_to_sol(MIN_SOL_BALANCE_LAMPORTS);
             Err(anyhow!(
-                "Please fund your wallet with at least {MIN_SOL_BALANCE:.6} SOL,\n\
+                "Please fund your wallet with at least {min_sol} SOL,\n\
                  then run 'tally-merchant init' again."
             ))
         }
@@ -356,15 +362,11 @@ fn prompt_treasury_setup(tally_client: &SimpleTallyClient, wallet: &Keypair) -> 
     } else {
         // Calculate the default ATA address upfront
         let usdc_mint = get_usdc_mint(None)?;
-        let default_ata = tally_sdk::ata::get_associated_token_address_for_mint(
-            &wallet.pubkey(),
-            &usdc_mint,
-        )?;
+        let default_ata =
+            tally_sdk::ata::get_associated_token_address_for_mint(&wallet.pubkey(), &usdc_mint)?;
 
         // Display the default ATA that will be created
-        println!(
-            "\n💡 The CLI will automatically create a USDC treasury (ATA) for you.\n"
-        );
+        println!("\n💡 The CLI will automatically create a USDC treasury (ATA) for you.\n");
         println!("Default treasury address: {default_ata}");
         println!("                          (will be created if it doesn't exist)\n");
 
