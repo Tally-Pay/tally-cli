@@ -1,6 +1,5 @@
 //! Dashboard commands implementation
 
-use crate::config::TallyCliConfig;
 use anyhow::{Context, Result};
 use clap::ValueEnum;
 use std::fmt::Write as _;
@@ -24,9 +23,8 @@ pub fn execute<T: std::fmt::Debug + Send + Sync>(
     command: &T,
     output_format: &OutputFormat,
     rpc_url: &str,
-    config: &TallyCliConfig,
 ) -> Result<String> {
-    execute_dashboard_command(command, output_format, rpc_url, config)
+    execute_dashboard_command(command, output_format, rpc_url)
 }
 
 /// Execute dashboard command with proper routing
@@ -37,7 +35,6 @@ pub fn execute_dashboard_command<T: std::fmt::Debug + Send + Sync>(
     command: &T,
     output_format: &OutputFormat,
     rpc_url: &str,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Create dashboard client
     let dashboard_client =
@@ -50,16 +47,16 @@ pub fn execute_dashboard_command<T: std::fmt::Debug + Send + Sync>(
 
     if command_str.contains("Overview") {
         // Extract merchant address from command
-        extract_and_execute_overview(&dashboard_client, &command_str, output_format, config)
+        extract_and_execute_overview(&dashboard_client, &command_str, output_format)
     } else if command_str.contains("Analytics") {
         // Extract plan address from command
-        extract_and_execute_analytics(&dashboard_client, &command_str, output_format, config)
+        extract_and_execute_analytics(&dashboard_client, &command_str, output_format)
     } else if command_str.contains("Events") {
         // Extract merchant address and optional since timestamp
-        extract_and_execute_events(&dashboard_client, &command_str, output_format, config)
+        extract_and_execute_events(&dashboard_client, &command_str, output_format)
     } else if command_str.contains("Subscriptions") {
         // Extract merchant address and active_only flag
-        extract_and_execute_subscriptions(&dashboard_client, &command_str, output_format, config)
+        extract_and_execute_subscriptions(&dashboard_client, &command_str, output_format)
     } else {
         Err(anyhow::anyhow!("Unknown dashboard command"))
     }
@@ -70,7 +67,6 @@ fn extract_and_execute_overview(
     dashboard_client: &DashboardClient,
     command_str: &str,
     output_format: &OutputFormat,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Parse merchant address from command string
     let merchant_str = command_str
@@ -121,7 +117,7 @@ fn extract_and_execute_overview(
             ])?;
             wtr.write_record([
                 "average_revenue_per_user_usdc",
-                &config.format_usdc(overview.average_revenue_per_payer),
+                &UsdcAmount::from_microlamports(overview.average_revenue_per_payer).to_string(),
             ])?;
             wtr.write_record(["total_plans", &overview.total_payment_terms.to_string()])?;
             wtr.write_record([
@@ -222,7 +218,6 @@ fn extract_and_execute_analytics(
     dashboard_client: &DashboardClient,
     command_str: &str,
     output_format: &OutputFormat,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Parse plan address from command string
     let plan_str = command_str
@@ -260,7 +255,7 @@ fn extract_and_execute_analytics(
             wtr.write_record(["plan_address", &analytics.payment_terms_address.to_string()])?;
             wtr.write_record([
                 "price_usdc",
-                &config.format_usdc(analytics.payment_terms.amount_usdc),
+                &UsdcAmount::from_microlamports(analytics.payment_terms.amount_usdc).to_string(),
             ])?;
             wtr.write_record([
                 "period_seconds",
@@ -402,7 +397,6 @@ fn extract_and_execute_events(
     dashboard_client: &DashboardClient,
     command_str: &str,
     _output_format: &OutputFormat,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Parse merchant address from command string
     let merchant_str = command_str
@@ -427,15 +421,18 @@ fn extract_and_execute_events(
         .map(|d| i64::try_from(d.as_secs()).unwrap_or(0))
         .unwrap_or(0);
 
+    // Default lookback: 1 hour (3600 seconds)
+    const DEFAULT_EVENTS_LOOKBACK_SECS: i64 = 3600;
+
     let since_timestamp = if command_str.contains("since: Some(") {
         command_str
             .split("since: Some(")
             .nth(1)
             .and_then(|s| s.split(')').next())
             .and_then(|s| s.parse::<i64>().ok())
-            .unwrap_or(current_timestamp - config.default_events_lookback_secs)
+            .unwrap_or(current_timestamp - DEFAULT_EVENTS_LOOKBACK_SECS)
     } else {
-        current_timestamp - config.default_events_lookback_secs
+        current_timestamp - DEFAULT_EVENTS_LOOKBACK_SECS
     };
 
     // Get recent events
@@ -486,7 +483,6 @@ fn extract_and_execute_subscriptions(
     dashboard_client: &DashboardClient,
     command_str: &str,
     output_format: &OutputFormat,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Parse merchant address from command string
     let merchant_str = command_str
@@ -555,7 +551,7 @@ fn extract_and_execute_subscriptions(
                     sub.payment_agreement.active.to_string(),
                     sub.payment_agreement.payment_count.to_string(),
                     UsdcAmount::from_microlamports(sub.total_paid).to_string(),
-                    config.format_usdc(sub.payment_terms.amount_usdc),
+                    UsdcAmount::from_microlamports(sub.payment_terms.amount_usdc).to_string(),
                     sub.payment_terms.period_secs.to_string(),
                     sub.payment_agreement.next_payment_ts.to_string(),
                 ])?;

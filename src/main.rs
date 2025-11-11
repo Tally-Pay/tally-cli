@@ -569,7 +569,7 @@ fn parse_output_format(format_str: &str) -> Result<OutputFormat> {
 async fn execute_config_commands(
     cli: &Cli,
     tally_client: Option<&SimpleTallyClient>,
-    config: &TallyCliConfig,
+    _config: &TallyCliConfig,
     command: &ConfigCommands,
 ) -> Result<String> {
     match command {
@@ -582,7 +582,7 @@ async fn execute_config_commands(
                 _ => "human",
             };
             let request = commands::show_config::ShowConfigRequest { output_format };
-            commands::execute_show_config(client, &request, config).await
+            commands::execute_show_config(client, &request).await
         }
 
         ConfigCommands::List { profile } => commands::config_file_ops::list(profile.as_deref()),
@@ -829,7 +829,6 @@ fn execute_dashboard_commands(
         &command_with_merchant,
         &output_format,
         rpc_url,
-        config,
     )
 }
 

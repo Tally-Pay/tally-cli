@@ -1,6 +1,5 @@
 //! Show global configuration account details
 
-use crate::config::TallyCliConfig;
 use crate::utils::colors::Theme;
 use anyhow::{Context, Result};
 use std::fmt::Write as _;
@@ -34,7 +33,6 @@ pub struct ShowConfigRequest<'a> {
 pub async fn execute(
     tally_client: &SimpleTallyClient,
     request: &ShowConfigRequest<'_>,
-    config: &TallyCliConfig,
 ) -> Result<String> {
     // Fetch config account
     let cfg = tally_client
@@ -96,8 +94,8 @@ pub async fn execute(
             Theme::info("Max Platform Fee:"),
             cfg.max_platform_fee_bps,
             Theme::value(
-                &config
-                    .format_fee_percentage(cfg.max_platform_fee_bps)
+                &BasisPoints::new(cfg.max_platform_fee_bps)?
+                    .percentage()
                     .to_string()
             )
         )?;
@@ -107,8 +105,8 @@ pub async fn execute(
             Theme::info("Min Platform Fee:"),
             cfg.min_platform_fee_bps,
             Theme::value(
-                &config
-                    .format_fee_percentage(cfg.min_platform_fee_bps)
+                &BasisPoints::new(cfg.min_platform_fee_bps)?
+                    .percentage()
                     .to_string()
             )
         )?;

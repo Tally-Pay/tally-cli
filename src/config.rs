@@ -14,12 +14,6 @@ pub struct TallyCliConfig {
     /// Default output format for CLI commands
     pub default_output_format: String,
 
-    /// USDC decimals divisor for converting micro-units to display units
-    pub usdc_decimals_divisor: u64,
-
-    /// Basis points divisor for fee calculations
-    pub basis_points_divisor: f64,
-
     /// Default lookback time for dashboard events in seconds
     #[allow(dead_code)] // Used when dashboard functionality is re-enabled
     pub default_events_lookback_secs: i64,
@@ -37,38 +31,11 @@ impl TallyCliConfig {
             default_output_format: env::var("TALLY_DEFAULT_OUTPUT_FORMAT")
                 .unwrap_or_else(|_| "human".to_string()),
 
-            usdc_decimals_divisor: env::var("USDC_DECIMALS_DIVISOR")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1_000_000),
-
-            basis_points_divisor: env::var("BASIS_POINTS_DIVISOR")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(100.0),
-
             default_events_lookback_secs: env::var("TALLY_DEFAULT_EVENTS_LOOKBACK_SECS")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3600), // 1 hour
         }
-    }
-
-    /// Convert USDC micro-units to display units (USDC)
-    ///
-    /// Uses integer arithmetic to avoid f64 precision loss.
-    /// Returns formatted string with 6 decimal places.
-    #[must_use]
-    pub fn format_usdc(&self, micro_units: u64) -> String {
-        let whole = micro_units / self.usdc_decimals_divisor;
-        let fractional = micro_units % self.usdc_decimals_divisor;
-        format!("{whole}.{fractional:06}")
-    }
-
-    /// Convert fee basis points to percentage
-    #[must_use]
-    pub fn format_fee_percentage(&self, fee_bps: u16) -> f64 {
-        f64::from(fee_bps) / self.basis_points_divisor
     }
 
     /// Get the default lookback timestamp for dashboard events
@@ -91,33 +58,17 @@ mod tests {
 
     #[test]
     fn test_config_defaults() {
+        // Clear any environment variables that would affect the test
+        std::env::remove_var("TALLY_RPC_URL");
+        std::env::remove_var("TALLY_DEFAULT_OUTPUT_FORMAT");
+        std::env::remove_var("TALLY_DEFAULT_EVENTS_LOOKBACK_SECS");
+
         let config = TallyCliConfig::new();
 
         // Test that defaults are sensible
         assert_eq!(config.default_rpc_url, "https://api.devnet.solana.com");
         assert_eq!(config.default_output_format, "human");
-        assert_eq!(config.usdc_decimals_divisor, 1_000_000);
-        assert!((config.basis_points_divisor - 100.0).abs() < f64::EPSILON);
         assert_eq!(config.default_events_lookback_secs, 3600);
-    }
-
-    #[test]
-    fn test_usdc_formatting() {
-        let config = TallyCliConfig::new();
-
-        assert_eq!(config.format_usdc(1_000_000), "1.000000");
-        assert_eq!(config.format_usdc(5_000_000), "5.000000");
-        assert_eq!(config.format_usdc(500_000), "0.500000");
-        assert_eq!(config.format_usdc(1_234_567), "1.234567");
-    }
-
-    #[test]
-    fn test_fee_percentage_formatting() {
-        let config = TallyCliConfig::new();
-
-        assert!((config.format_fee_percentage(50) - 0.5).abs() < f64::EPSILON);
-        assert!((config.format_fee_percentage(100) - 1.0).abs() < f64::EPSILON);
-        assert!((config.format_fee_percentage(1000) - 10.0).abs() < f64::EPSILON);
     }
 
     #[test]
