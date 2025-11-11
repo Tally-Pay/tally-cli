@@ -873,13 +873,25 @@ async fn execute_command(
             uninstall,
         } => {
             use clap::CommandFactory;
+            use commands::completions::CompletionAction;
+
+            // Determine action based on flags (priority order)
+            let action = if *print {
+                CompletionAction::Print
+            } else if *uninstall {
+                CompletionAction::Uninstall
+            } else if *dry_run {
+                CompletionAction::DryRun
+            } else if *install || *yes {
+                CompletionAction::Install
+            } else {
+                CompletionAction::Auto
+            };
+
             let args = commands::completions::CompletionsArgs {
                 shell: *shell,
-                install: *install,
-                yes: *yes,
-                print: *print,
-                dry_run: *dry_run,
-                uninstall: *uninstall,
+                action,
+                skip_confirm: *yes,
             };
             let cmd = Cli::command();
             commands::completions::execute(&args, cmd)

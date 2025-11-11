@@ -13,15 +13,27 @@ use std::fs;
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 
+/// Completion action to perform
+#[derive(Debug, Clone)]
+pub enum CompletionAction {
+    /// Print completion script to stdout
+    Print,
+    /// Install completion files
+    Install,
+    /// Show installation plan without making changes
+    DryRun,
+    /// Remove completion files
+    Uninstall,
+    /// Auto-detect based on TTY (default)
+    Auto,
+}
+
 /// Completions command arguments
 #[derive(Debug, Clone)]
 pub struct CompletionsArgs {
     pub shell: Shell,
-    pub install: bool,
-    pub yes: bool,
-    pub print: bool,
-    pub dry_run: bool,
-    pub uninstall: bool,
+    pub action: CompletionAction,
+    pub skip_confirm: bool,
 }
 
 /// Execute the completions command with smart behavior
@@ -33,33 +45,23 @@ pub struct CompletionsArgs {
 /// - User's home directory cannot be determined
 /// - Shell configuration files cannot be read or modified
 pub fn execute(args: &CompletionsArgs, mut cmd: Command) -> Result<String> {
-    // Handle explicit flags first
-    if args.print {
-        // Just print script to stdout (for piping/automation)
-        print_completion_script(args.shell, &mut cmd);
-        return Ok(String::new());
-    }
-
-    if args.uninstall {
-        return uninstall_completions(args.shell, args.yes);
-    }
-
-    if args.dry_run {
-        return show_installation_plan(args.shell);
-    }
-
-    if args.install || args.yes {
-        return install_completions(args.shell, args.yes, &mut cmd);
-    }
-
-    // Default behavior: Smart based on TTY
-    if io::stdout().is_terminal() {
-        // Interactive mode: Show helpful installation guide
-        show_installation_guide(args.shell, &mut cmd)
-    } else {
-        // Non-TTY (piped): Print script to stdout (preserves scriptability)
-        print_completion_script(args.shell, &mut cmd);
-        Ok(String::new())
+    match &args.action {
+        CompletionAction::Print => {
+            print_completion_script(args.shell, &mut cmd);
+            Ok(String::new())
+        }
+        CompletionAction::Uninstall => uninstall_completions(args.shell, args.skip_confirm),
+        CompletionAction::DryRun => show_installation_plan(args.shell),
+        CompletionAction::Install => install_completions(args.shell, args.skip_confirm, &mut cmd),
+        CompletionAction::Auto => {
+            // Smart based on TTY
+            if io::stdout().is_terminal() {
+                show_installation_guide(args.shell, &mut cmd)
+            } else {
+                print_completion_script(args.shell, &mut cmd);
+                Ok(String::new())
+            }
+        }
     }
 }
 
