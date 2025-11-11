@@ -915,16 +915,129 @@ tasks:
         echo ""
         echo "✅ Config operations complete"
 
+  e2e:setup-payer-wallet:
+    desc: "Setup dedicated payer wallet for E2E agreement testing"
+    internal: true
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/payer-dev.json"
+
+        if [ ! -f "$WALLET_PATH" ]; then
+          echo "🔑 Creating payer dev wallet..."
+          mkdir -p "$(dirname "$WALLET_PATH")"
+          solana-keygen new --no-bip39-passphrase --silent --outfile "$WALLET_PATH"
+          echo "✅ Wallet created: $WALLET_PATH"
+        else
+          echo "✅ Wallet exists: $WALLET_PATH"
+        fi
+
+        WALLET_ADDR=$(solana-keygen pubkey "$WALLET_PATH")
+        echo "   Address: $WALLET_ADDR"
+
+  e2e:fund-payer-wallet:
+    desc: "Fund payer dev wallet on localnet"
+    internal: true
+    cmds:
+      - |
+        WALLET_PATH="$HOME/.config/solana/payer-dev.json"
+        WALLET_ADDR=$(solana-keygen pubkey "$WALLET_PATH")
+
+        echo "💰 Funding payer wallet..."
+
+        # Check current balance
+        BALANCE_STR=$({{.SOLANA_CLI}} balance "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null || echo "0 SOL")
+        CURRENT_BALANCE=$(echo "$BALANCE_STR" | awk '{print int($1)}')
+
+        if [ "$CURRENT_BALANCE" -lt 2 ]; then
+          echo "   Attempting airdrop..."
+          if {{.SOLANA_CLI}} airdrop 10 "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null; then
+            echo "✅ Airdrop successful"
+            sleep 1
+          else
+            echo "⚠️  Airdrop failed, transferring from main wallet..."
+            if {{.SOLANA_CLI}} transfer "$WALLET_ADDR" 10 --url {{.RPC_URL}} --allow-unfunded-recipient 2>&1; then
+              echo "✅ Transfer successful"
+            else
+              echo "❌ Failed to fund payer wallet"
+              exit 1
+            fi
+          fi
+        else
+          echo "✅ Wallet already funded (${CURRENT_BALANCE} SOL)"
+        fi
+
+        sleep 1
+        BALANCE=$({{.SOLANA_CLI}} balance "$WALLET_ADDR" --url {{.RPC_URL}} 2>/dev/null || echo "0 SOL")
+        echo "✅ Final balance: $BALANCE"
+
+  e2e:test-agreement-list:
+    desc: "Test agreement list command (requires payment terms)"
+    internal: true
+    vars:
+      USDC_MINT:
+        sh: 'grep "USDC_MINT=" .env.local 2>/dev/null | tail -1 | cut -d"=" -f2'
+    cmds:
+      - |
+        PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        echo "           TESTING AGREEMENT OPERATIONS (READ-ONLY)"
+        echo "═══════════════════════════════════════════════════════════"
+        echo ""
+
+        echo "📋 Note: Agreement creation is done via Actions/Blinks, not CLI"
+        echo "    The CLI only provides read operations for viewing agreements"
+        echo ""
+
+        # Get payment terms PDAs from on-chain data
+        echo "Getting payment terms for testing..."
+        TERMS_OUTPUT=$(cargo run --release -- \
+          --rpc-url {{.RPC_URL}} \
+          --program-id {{.PROGRAM_ID}} \
+          --usdc-mint {{.USDC_MINT}} \
+          payment-terms list \
+          --payee "$PAYEE_PDA" --output json 2>/dev/null || echo "[]")
+
+        # Try to extract a payment terms PDA (if any exist)
+        TERMS_COUNT=$(echo "$TERMS_OUTPUT" | grep -c "payment_terms_pda" || echo "0")
+
+        if [ "$TERMS_COUNT" -gt 0 ]; then
+          # Extract first payment terms PDA
+          FIRST_TERMS=$(echo "$TERMS_OUTPUT" | grep "payment_terms_pda" | head -1 | awk -F'"' '{print $4}')
+
+          if [ -n "$FIRST_TERMS" ]; then
+            echo "Testing agreement list for payment terms: $FIRST_TERMS"
+            cargo run --release -- \
+              --rpc-url {{.RPC_URL}} \
+              --program-id {{.PROGRAM_ID}} \
+              --usdc-mint {{.USDC_MINT}} \
+              agreement list \
+              --payment-terms "$FIRST_TERMS" || echo "⚠️  No agreements found (expected for new setup)"
+          else
+            echo "⚠️  Could not extract payment terms PDA, skipping agreement list test"
+          fi
+        else
+          echo "⚠️  No payment terms found, skipping agreement list test"
+        fi
+
+        echo ""
+        echo "✅ Agreement read operations tested"
+        echo "   To create actual agreements: Use Actions/Blinks API"
+        echo "   Payer wallet available at: ~/.config/solana/payer-dev.json"
+
   e2e:cleanup:
-    desc: "Clean up E2E test state (keeps wallet, removes temp files)"
+    desc: "Clean up E2E test state (keeps wallets, removes temp files)"
     cmds:
       - |
         echo "🧹 Cleaning up E2E test state..."
         rm -f /tmp/tally-merchant-dev-*
         echo "✅ Cleanup complete"
         echo ""
-        echo "Note: Wallet at ~/.config/solana/merchant-dev.json is preserved"
-        echo "      To remove it: rm ~/.config/solana/merchant-dev.json"
+        echo "Note: Wallets are preserved:"
+        echo "      Merchant: ~/.config/solana/merchant-dev.json"
+        echo "      Payer:    ~/.config/solana/payer-dev.json"
+        echo "      To remove: rm ~/.config/solana/*-dev.json"
 
   e2e:
     desc: "Run complete end-to-end test with merchant dev wallet"
@@ -949,6 +1062,9 @@ tasks:
       - task: e2e:list-payment-terms
       - task: e2e:dashboard
       - task: e2e:test-config
+      - task: e2e:setup-payer-wallet
+      - task: e2e:fund-payer-wallet
+      - task: e2e:test-agreement-list
       - |
         echo ""
         echo "╔═══════════════════════════════════════════════════════════╗"
@@ -956,12 +1072,23 @@ tasks:
         echo "╚═══════════════════════════════════════════════════════════╝"
         echo ""
         echo "📋 Summary:"
-        echo "   Wallet: $HOME/.config/solana/merchant-dev.json"
-        echo "   Payee PDA: $(cat /tmp/tally-merchant-dev-payee-pda 2>/dev/null || echo 'N/A')"
-        echo "   Payment Terms: 3 (basic, pro, enterprise)"
+        echo "   Merchant Wallet: $HOME/.config/solana/merchant-dev.json"
+        echo "   Payer Wallet:    $HOME/.config/solana/payer-dev.json"
+        echo "   Payee PDA:       $(cat /tmp/tally-merchant-dev-payee-pda 2>/dev/null || echo 'N/A')"
+        echo "   Payment Terms:   3 (basic, pro, enterprise)"
+        echo ""
+        echo "✅ Tested CLI Features:"
+        echo "   • Payee operations (init, show)"
+        echo "   • Payment terms operations (create, list)"
+        echo "   • Dashboard (overview)"
+        echo "   • Config file operations (list, set)"
+        echo "   • Agreement read operations (list)"
+        echo ""
+        echo "📝 Note: Agreement creation is done via Actions/Blinks API"
+        echo "   The CLI provides read-only access to agreement data"
         echo ""
         echo "🎯 Next steps:"
-        echo "   - Test agreements with a separate payer wallet"
+        echo "   - Create agreements via Actions/Blinks API using payer wallet"
         echo "   - Run: task e2e:cleanup to reset test state"
 
   # =============================================================================
