@@ -688,7 +688,7 @@ tasks:
         # Check if payee already exists (idempotent)
         if [ -f /tmp/tally-merchant-dev-payee-pda ]; then
           EXISTING_PAYEE_PDA=$(cat /tmp/tally-merchant-dev-payee-pda)
-          if tally-merchant \
+          if cargo run --release -- \
             --rpc-url {{.RPC_URL}} \
             --program-id {{.PROGRAM_ID}} \
             --usdc-mint {{.USDC_MINT}} \
@@ -701,11 +701,12 @@ tasks:
         fi
 
         # Initialize new payee
-        OUTPUT=$(tally-merchant \
+        OUTPUT=$(cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
           payee init \
+          --authority "$WALLET_PATH" \
           --treasury "$USDC_ATA" 2>&1)
 
         echo "$OUTPUT"
@@ -741,11 +742,12 @@ tasks:
 
         # Create Basic tier - $5/month
         echo "Creating: Basic ($5/month)..."
-        if tally-merchant \
+        if cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
           payment-terms create \
+          --authority "$WALLET_PATH" \
           --payee "$PAYEE_PDA" \
           --id "basic" \
           --amount-usdc "5.0" \
@@ -760,11 +762,12 @@ tasks:
 
         # Create Pro tier - $15/month
         echo "Creating: Pro ($15/month)..."
-        if tally-merchant \
+        if cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
           payment-terms create \
+          --authority "$WALLET_PATH" \
           --payee "$PAYEE_PDA" \
           --id "pro" \
           --amount-usdc "15.0" \
@@ -779,11 +782,12 @@ tasks:
 
         # Create Enterprise tier - $50/month
         echo "Creating: Enterprise ($50/month)..."
-        if tally-merchant \
+        if cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
           payment-terms create \
+          --authority "$WALLET_PATH" \
           --payee "$PAYEE_PDA" \
           --id "enterprise" \
           --amount-usdc "50.0" \
@@ -820,7 +824,7 @@ tasks:
         echo "═══════════════════════════════════════════════════════════"
         echo ""
 
-        tally-merchant \
+        cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
@@ -845,7 +849,7 @@ tasks:
         echo "═══════════════════════════════════════════════════════════"
         echo ""
 
-        tally-merchant \
+        cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
@@ -870,7 +874,7 @@ tasks:
         echo "═══════════════════════════════════════════════════════════"
         echo ""
 
-        tally-merchant \
+        cargo run --release -- \
           --rpc-url {{.RPC_URL}} \
           --program-id {{.PROGRAM_ID}} \
           --usdc-mint {{.USDC_MINT}} \
@@ -896,17 +900,17 @@ tasks:
 
         # Show current config
         echo "Current config:"
-        tally-merchant config show || echo "No config yet"
+        cargo run --release -- config list || echo "No config yet"
         echo ""
 
         # Set merchant in profile
         echo "Setting merchant in config..."
-        tally-merchant config set merchant "$PAYEE_PDA"
+        cargo run --release -- config set merchant "$PAYEE_PDA"
         echo ""
 
         # Show updated config
         echo "Updated config:"
-        tally-merchant config show || echo "⚠️  Config show currently unavailable"
+        cargo run --release -- config list || echo "⚠️  Config list currently unavailable"
 
         echo ""
         echo "✅ Config operations complete"
@@ -957,7 +961,7 @@ tasks:
         echo "   Payment Terms: 3 (basic, pro, enterprise)"
         echo ""
         echo "🎯 Next steps:"
-        echo "   - Test subscriptions with a separate subscriber wallet"
+        echo "   - Test agreements with a separate payer wallet"
         echo "   - Run: task e2e:cleanup to reset test state"
 
   # =============================================================================

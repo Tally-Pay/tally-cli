@@ -320,6 +320,7 @@ dependencies = [
  "anchor-lang",
  "spl-associated-token-account 6.0.0",
  "spl-token 7.0.0",
+ "spl-token-2022 6.0.0",
 ]
 
 [[package]]
